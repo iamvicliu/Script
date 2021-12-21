@@ -17,5 +17,37 @@ DOMAIN-SUFFIX,jd.com,proxy
 DOMAIN-SUFFIX,360buyimg.com,proxy
 DOMAIN-SUFFIX,taobao.com,proxy
 DOMAIN-SUFFIX,tmall.com,proxy
-
-
+host-keyword, teamviewer, proxy
+host-keyword, oracle, proxy
+host-keyword, mxc, proxy
+host-suffix, fast.com, proxy
+host-suffix, cloudflare.com, proxy
+host-suffix, get.sogou.con, direct
+host-suffix, bazaarvoice.com, proxy
+host-suffix, marriott.com, proxy
+host-suffix, squareup.com, proxy
+host-keyword, faceapp, proxy
+host-keyword, zhangle, proxy
+host-suffix, liveperson.net, proxy
+host-suffix, netverify.com, proxy
+host-keyword, clubhouse, proxy
+host-keyword, hsbc, proxy
+host, pglstatp-toutiao.com, reject
+host, m.ctexcel.fr, proxy
+host-suffix, ihg.com, direct
+host, api.map.baidu.com, proxy
+host, wx.coastalbank.cn, proxy
+host, rsshub.app, proxy
+host-suffix, zzzccc.live, proxy
+host, sf3-ttcdn-tos.pstatp.com, reject
+host-keyword, ecitic, direct
+host-suffix, *.cmtelecare.com.hk, direct
+host-keyword, xyz, proxy
+host-keyword, ooxx, proxy
+host-keyword, duyaoss, proxy
+host, testflight.center, proxy
+host-suffix, wlvpn.com, proxy
+host-suffix, freebinchecker.com, proxy
+host-suffix, feedburner.com, proxy
+host-suffix, arcot.com, proxy
+host-suffix, appledaily.com, proxy
