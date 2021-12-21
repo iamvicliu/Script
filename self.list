@@ -4,9 +4,10 @@ host-suffix, promote.biz.weibo.cn, direct
 host-suffix, getui.com, direct
 host, jf365.boc.cn, direct
 host, loc.map.baidu.com, direct
-host-keyword, umeng, direct
-host-suffix, umeng.com, direct
-host, umeng.com, direct
+
+host-keyword, umeng, proxy
+host-suffix, umeng.com, proxy
+host, umeng.com, proxy
 
 
 
