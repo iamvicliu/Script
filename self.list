@@ -7,7 +7,11 @@ host, loc.map.baidu.com, direct
 host-keyword, umeng, direct
 
 
+
 # 代理
 DOMAIN-SUFFIX,jd.com,proxy
+DOMAIN-SUFFIX,360buyimg.com,proxy
 DOMAIN-SUFFIX,taobao.com,proxy
 DOMAIN-SUFFIX,tmall.com,proxy
+
+
