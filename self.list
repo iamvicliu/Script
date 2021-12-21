@@ -5,6 +5,8 @@ host-suffix, getui.com, direct
 host, jf365.boc.cn, direct
 host, loc.map.baidu.com, direct
 
+
+# 友盟
 host-keyword, umeng, proxy
 host-suffix, umeng.com, proxy
 host, umeng.com, proxy
