@@ -1,6 +1,11 @@
 # 直连
+host-suffix, biz.weibo.com, direct
+host-suffix, promote.biz.weibo.cn, direct
+host-suffix, getui.com, direct
+host, jf365.boc.cn, direct
 host, loc.map.baidu.com, direct
 host-keyword, umeng, direct
+
 
 # 代理
 DOMAIN-SUFFIX,jd.com,proxy
