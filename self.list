@@ -8,6 +8,7 @@ host, loc.map.baidu.com, direct
 host-keyword, umeng, proxy
 host-suffix, umeng.com, proxy
 host, umeng.com, proxy
+host, web.umeng.com, proxy
 
 
 
