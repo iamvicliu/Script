@@ -19,6 +19,7 @@ host, web.umeng.com, proxy
 
 
 # 代理
+host-keyword, zoom, proxy
 host-keyword, teamviewer, proxy
 host-keyword, oracle, proxy
 host-keyword, mxc, proxy
