@@ -7,6 +7,7 @@ host, loc.map.baidu.com, direct
 host-suffix, ihg.com, direct
 host-keyword, ecitic, direct
 host-keyword, wps, direct
+host, vipapi.wps.cn, direct
 host-suffix, *.cmtelecare.com.hk, direct
 
 
