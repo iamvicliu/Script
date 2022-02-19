@@ -58,3 +58,9 @@ host-suffix, appledaily.com, proxy
 #屏蔽
 host, pglstatp-toutiao.com, reject
 host, sf3-ttcdn-tos.pstatp.com, reject
+# 知乎去广告
+DOMAIN,118.89.204.198,REJECT
+DOMAIN-SUFFIX,118.89.204.198,REJECT
+DOMAIN-KEYWORD,118.89.204.198,REJECT
+IP-CIDR,118.89.204.198/32,REJECT
+USER-AGENT,AVOS*,REJECT
