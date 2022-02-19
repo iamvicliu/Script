@@ -12,7 +12,7 @@ host-suffix, *.cmtelecare.com.hk, direct
 
 
 
-# 友盟
+# 友盟代理
 host-keyword, umeng, proxy
 host-suffix, umeng.com, proxy
 host, umeng.com, proxy
@@ -21,6 +21,8 @@ host, web.umeng.com, proxy
 
 
 # 代理
+host-suffix, jpmtl.com, proxy
+host-suffix, madou.club, proxy
 host-keyword, zoom, proxy
 host-keyword, teamviewer, proxy
 host-keyword, oracle, proxy
