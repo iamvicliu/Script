@@ -12,3 +12,4 @@ DOMAIN-SUFFIX,shimonote.com,proxy
 DOMAIN-SUFFIX,zhihu.com,proxy
 DOMAIN-SUFFIX,bilibili.com,proxy
 host-keyword, amazon,proxy
+host-suffix,z.cn,proxy
