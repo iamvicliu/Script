@@ -11,5 +11,13 @@ DOMAIN-SUFFIX,shimo.im,proxy
 DOMAIN-SUFFIX,shimonote.com,proxy
 DOMAIN-SUFFIX,zhihu.com,proxy
 DOMAIN-SUFFIX,bilibili.com,proxy
-host-keyword,amazon,proxy
 host-suffix,z.cn,proxy
+host-suffix,115.com,proxy
+host-suffix,douban.com,proxy
+host-suffix,epicgames.com,proxy
+host-suffix,smzdm.com,proxy
+
+
+host-keyword,amazon,proxy
+host-keyword,job,proxy
+host-keyword,game,proxy
