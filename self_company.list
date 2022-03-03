@@ -17,7 +17,6 @@ DOMAIN-SUFFIX,qq.com,proxy
 DOMAIN-SUFFIX,163.com,proxy
 DOMAIN-SUFFIX,zhihu.com,proxy
 DOMAIN-SUFFIX,bilibili.com,proxy
-host-suffix,115.com,proxy
 host-suffix,douban.com,proxy
 
 
@@ -26,6 +25,7 @@ DOMAIN-SUFFIX,yinxiang.com,proxy
 DOMAIN-SUFFIX,evernote.com,proxy
 DOMAIN-SUFFIX,shimo.im,proxy
 DOMAIN-SUFFIX,shimonote.com,proxy
+host-suffix,115.com,proxy
 
 
 #游戏
@@ -35,3 +35,4 @@ host-keyword,game,proxy
 
 #敏感
 host-keyword,job,proxy
+host-keyword,linkedin,proxy
