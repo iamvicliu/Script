@@ -9,6 +9,7 @@ host-keyword, ecitic, direct
 host-keyword, wps, direct
 host, vipapi.wps.cn, direct
 host-suffix, *.cmtelecare.com.hk, direct
+host-suffix, passport.umeng.com, direct
 
 
 
