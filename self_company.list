@@ -18,6 +18,8 @@ DOMAIN-SUFFIX,163.com,proxy
 DOMAIN-SUFFIX,zhihu.com,proxy
 DOMAIN-SUFFIX,bilibili.com,proxy
 host-suffix,douban.com,proxy
+host-suffix,weibo.com,proxy
+host-suffix,t.cn,proxy
 
 
 #云
