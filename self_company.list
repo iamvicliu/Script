@@ -1,7 +1,6 @@
 # 强制代理
 
 
-
 # 电商
 DOMAIN-SUFFIX,jd.com,proxy
 DOMAIN-SUFFIX,360buyimg.com,proxy
@@ -21,7 +20,6 @@ host-suffix,douban.com,proxy
 host-suffix,weibo.com,proxy
 host-suffix,t.cn,proxy
 host-suffix,picovr.com,proxy
-
 
 
 #云
