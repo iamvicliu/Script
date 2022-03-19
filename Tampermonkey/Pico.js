@@ -2,7 +2,7 @@
 // @name         Pico论坛替换title
 // @namespace    Pico_title_replace
 // @version      0.1
-// @description  Pico论坛替换title
+// @description  Pico论坛自动替换title，包含帖子详情、版块详情、个人主页
 // @author       You
 // @match        https://bbs.picovr.com/*
 // @icon         https://zstatic.picovr.com/pico/global/imgs/header/favicon.ico
