@@ -3,11 +3,13 @@
 // @namespace    Pico_title_replace
 // @version      0.1
 // @description  Pico论坛自动替换title，包含帖子详情、版块详情、个人主页
-// @author       You
+// @author       维克牛
 // @match        https://bbs.picovr.com/*
 // @icon         https://zstatic.picovr.com/pico/global/imgs/header/favicon.ico
 // @grant        none
 
+
+//脚本编写日期：2022年03月19日
 
 // ==/UserScript==
 
