@@ -5,6 +5,7 @@ host-suffix, getui.com, direct
 host, jf365.boc.cn, direct
 host, loc.map.baidu.com, direct
 host-suffix, ihg.com, direct
+host-suffix, ecombdapi.com, direct #抖音商品列表
 host-keyword, ecitic, direct
 host-keyword, wps, direct
 host, vipapi.wps.cn, direct
