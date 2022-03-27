@@ -5,13 +5,14 @@ host-suffix, getui.com, direct
 host, jf365.boc.cn, direct
 host, loc.map.baidu.com, direct
 host-suffix, ihg.com, direct
-host-suffix, ecombdapi.com, direct #抖音商品列表
 host-keyword, ecitic, direct
 host-keyword, wps, direct
 host, vipapi.wps.cn, direct
 host-suffix, *.cmtelecare.com.hk, direct
 host-suffix, passport.umeng.com, direct
 
+# 直连，抖音商品列表
+host-suffix, ecombdapi.com, direct
 
 
 # 代理-友盟
@@ -22,7 +23,6 @@ host, web.umeng.com, proxy
 
 # 代理-美国IP
 host-keyword, zoom, 美国IP
-
 
 # 代理
 host-suffix, jpmtl.com, proxy
