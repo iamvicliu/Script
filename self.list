@@ -1,5 +1,4 @@
 # 直连
-host-suffix, pstatp.com, direct
 host-suffix, biz.weibo.com, direct
 host-suffix, promote.biz.weibo.cn, direct
 host-suffix, getui.com, direct
