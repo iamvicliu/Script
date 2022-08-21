@@ -8,7 +8,7 @@ host-suffix, ihg.com, direct
 host-keyword, ecitic, direct
 host-keyword, wps, direct
 host, vipapi.wps.cn, direct
-host-suffix, *.cmtelecare.com.hk, direct
+host-suffix, cmtelecare.com.hk, direct
 host-suffix, passport.umeng.com, direct
 
 # 直连，抖音商品列表
