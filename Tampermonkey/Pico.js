@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pico论坛替换title
 // @namespace    Pico_title_replace
-// @version      0.1
+// @version      0.2
 // @description  Pico论坛自动替换title，包含帖子详情、版块详情、个人主页
 // @author       维克牛
 // @match        https://bbs.picovr.com/*
@@ -10,6 +10,7 @@
 
 
 //脚本编写日期：2022年03月19日
+//第二次更新：2022年09月27日
 
 // ==/UserScript==
 
