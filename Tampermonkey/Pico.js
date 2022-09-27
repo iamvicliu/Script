@@ -18,19 +18,19 @@
     setInterval(function(){
         if (document.URL.includes("post/") )
         {
-            var title ="帖子-"+ document.getElementsByClassName("index__titleText--zTSpT post-title-text")[0].innerHTML;
+            var title ="帖子-"+ document.getElementsByClassName("index__titleText__c0Gll community-post-title-text")[0].innerHTML;
             document.title=title;
             //alert(title);
         }
         else if (document.URL.includes("category/"))
         {
-           var cat="版块-"+document.getElementsByClassName("pico-typography pico-typography-simple-ellipsis index__title--71vLP")[0].innerHTML;
+           var cat="版块-"+document.getElementsByClassName("pico-typography index__title___71vLP")[0].innerHTML;
             document.title=cat;
         }
 
         else if (document.URL.includes("user/"))
         {
-            var user ="个人-"+ document.getElementsByClassName("index__userName--R7Kz0")[0].innerHTML;
+            var user ="个人-"+ document.getElementsByClassName("index__userName___R7Kz0")[0].innerHTML;
             document.title=user;
         }
         else {}
