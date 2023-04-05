@@ -1,3 +1,17 @@
+# OpenAI
+HOST-SUFFIX, ai.com, OpenAI
+HOST-SUFFIX, openai.com, OpenAI
+HOST, cdn.auth0.com, OpenAI
+HOST, openaiapi-site.azureedge.net, OpenAI
+HOST, challenges.cloudflare.com, OpenAI
+HOST-SUFFIX, identrust.com, OpenAI
+HOST-SUFFIX, vimeo.com, OpenAI
+HOST-SUFFIX, vimeocdn.com, OpenAI
+HOST-SUFFIX, hcaptcha.com, OpenAI
+HOST-SUFFIX, akamaized.com, OpenAI
+
+
+
 # 直连
 host-suffix, biz.weibo.com, direct
 host-suffix, promote.biz.weibo.cn, direct
@@ -61,6 +75,7 @@ host-suffix, appledaily.com, proxy
 #屏蔽
 host, pglstatp-toutiao.com, reject
 host, sf3-ttcdn-tos.pstatp.com, reject
+
 # 知乎去广告
 DOMAIN,118.89.204.198,REJECT
 DOMAIN-SUFFIX,118.89.204.198,REJECT
