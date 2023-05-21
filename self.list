@@ -1,3 +1,11 @@
+# 币安
+HOST-SUFFIX, binance.me, 币安
+HOST-SUFFIX, binance.com, 币安
+HOST-SUFFIX, bnbstatic.com, 币安
+HOST-SUFFIX, bntrace.com, 币安
+HOST-SUFFIX, saasexch.com, 币安
+
+
 # OpenAI
 HOST-SUFFIX, ai.com, OpenAI
 HOST-SUFFIX, openai.com, OpenAI
