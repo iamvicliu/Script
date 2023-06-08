@@ -6,18 +6,6 @@ HOST-SUFFIX, bntrace.com, 币安
 HOST-SUFFIX, saasexch.com, 币安
 
 
-# OpenAI
-HOST-SUFFIX, ai.com, OpenAI
-HOST-SUFFIX, openai.com, OpenAI
-HOST, cdn.auth0.com, OpenAI
-HOST, openaiapi-site.azureedge.net, OpenAI
-HOST, challenges.cloudflare.com, OpenAI
-HOST-SUFFIX, identrust.com, OpenAI
-HOST-SUFFIX, vimeo.com, OpenAI
-HOST-SUFFIX, vimeocdn.com, OpenAI
-HOST-SUFFIX, hcaptcha.com, OpenAI
-HOST-SUFFIX, akamaized.com, OpenAI
-
 
 
 # 直连
