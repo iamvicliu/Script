@@ -57,7 +57,6 @@ host, api.map.baidu.com, proxy
 host, wx.coastalbank.cn, proxy
 host, rsshub.app, proxy
 host-suffix, zzzccc.live, proxy
-host-keyword, xyz, proxy
 host-keyword, ooxx, proxy
 host-keyword, duyaoss, proxy
 host, testflight.center, proxy
