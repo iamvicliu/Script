@@ -3,13 +3,16 @@
 
 # 更新系统
 echo "开始更新系统..."
-sudo apt update
+apt update && apt upgrade -y && apt dist-upgrade -y && apt full-upgrade -y && apt autoremove -y &&
 echo "完成更新系统"
 
+
+
 # 安装 curl 
-echo "开始安装 curl "
-sudo apt install -y curl
+echo "开始安装 curl，screen等 "
+sudo apt install -y vim git curl screen htop vnstat net-tools dnsutils sudo
 echo "完成安装 curl "
+
 
 # 修改系统时区为 Asia/Shanghai
 echo "开始修改系统时区为 Asia/Shanghai..."
@@ -37,6 +40,7 @@ curl -fsSL https://get.docker.com | bash -s docker
 echo "完成安装 docker"
 
 
+
 : '
 # 安装 Rclone
 echo "开始安装 Rclone..."
@@ -44,10 +48,6 @@ sudo -v ; curl https://rclone.org/install.sh | sudo bash
 apt install fuse3
 echo "完成安装 Rclone"
 
-# 安装 Screen
-echo "开始安装 Screen..."
-apt install screen -y
-echo "完成安装 Screen"
 
 # 安装 fail2ban
 echo "开始安装 fail2ban..."
