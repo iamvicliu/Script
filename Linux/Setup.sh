@@ -37,7 +37,7 @@ curl -fsSL https://get.docker.com | bash -s docker
 echo "完成安装 docker"
 
 
-:'
+: '
 # 安装 Rclone
 echo "开始安装 Rclone..."
 sudo -v ; curl https://rclone.org/install.sh | sudo bash
