@@ -1,4 +1,5 @@
 # OpenAI
+HOST-SUFFIX, chatgpt.com, OpenAI
 HOST-SUFFIX, ai.com, OpenAI
 HOST-SUFFIX, openai.com, OpenAI
 HOST, cdn.auth0.com, OpenAI
