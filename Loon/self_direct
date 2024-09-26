@@ -1,1 +1,18 @@
-哈哈
+#走直连
+#2024年9月26日14:24:44
+
+
+HOST-SUFFIX, biz.weibo.com
+HOST-SUFFIX, promote.biz.weibo.cn
+HOST-SUFFIX, getui.com
+HOST, jf365.boc.cn
+HOST, loc.map.baidu.com
+HOST-SUFFIX, ihg.com
+HOST-KEYWORD, ecitic
+HOST-KEYWORD, wps
+HOST, vipapi.wps.cn
+HOST-SUFFIX, cmtelecare.com.hk
+HOST-SUFFIX, passport.umeng.com
+
+# 直连，抖音商品列表
+HOST-SUFFIX, ecombdapi.com
