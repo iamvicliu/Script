@@ -1,1 +1,12 @@
-哈哈
+#2024年9月26日14:28:02
+
+#屏蔽
+HOST, pglstatp-toutiao.com
+HOST, sf3-ttcdn-tos.pstatp.com
+
+# 知乎去广告
+DOMAIN,118.89.204.198
+DOMAIN-SUFFIX,118.89.204.198
+DOMAIN-KEYWORD,118.89.204.198
+IP-CIDR,118.89.204.198/32
+USER-AGENT,AVOS*
