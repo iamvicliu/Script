@@ -14,8 +14,8 @@ sudo apt install -y vim git curl screen htop vnstat net-tools dnsutils sudo
 echo "——————————完成安装 curl "
 
 
-# 修改系统时区为 Asia/Shanghai
-echo "——————————开始修改系统时区为 Asia/Shanghai..."
+# 修改系统时区为 Asia/Shanghai，并且给history增加时间
+echo "——————————开始修改系统时区为 Asia/Shanghai，并且给history增加时间"
 sudo timedatectl set-timezone Asia/Shanghai
 echo 'HISTTIMEFORMAT="%F %T "' >> /etc/profile
 source /etc/profile
