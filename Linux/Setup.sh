@@ -16,7 +16,8 @@ echo "——————————完成安装 curl "
 
 # 修改系统时区为 Asia/Shanghai，并且给history增加时间
 echo "——————————开始修改系统时区为 Asia/Shanghai，并且给history增加时间"
-sudo timedatectl set-timezone Asia/Shanghai
+cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+date -R
 echo 'HISTTIMEFORMAT="%F %T "' >> /etc/profile
 source /etc/profile
 echo "——————————完成时区修改"
