@@ -14,13 +14,6 @@ sudo apt install -y vim git curl screen htop vnstat net-tools dnsutils sudo
 echo "——————————完成安装 curl "
 
 
-# 修改系统时区为 Asia/Shanghai，并且给history增加时间
-echo "——————————开始修改系统时区为 Asia/Shanghai，并且给history增加时间"
-cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
-date -R
-echo 'HISTTIMEFORMAT="%F %T "' >> /etc/profile
-source /etc/profile
-echo "——————————完成时区修改"
 
 # 开启 bbr
 echo "——————————开始启用 bbr..."
@@ -41,6 +34,16 @@ echo "——————————完成安装 Python 3 和 pip"
 echo "——————————开始安装 docker..."
 curl -fsSL https://get.docker.com | bash -s docker
 echo "——————————完成安装 docker"
+
+
+
+# 修改系统时区为 Asia/Shanghai，并且给history增加时间
+echo "——————————开始修改系统时区为 Asia/Shanghai，并且给history增加时间"
+cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+date -R
+echo 'HISTTIMEFORMAT="%F %T "' >> /etc/profile
+source /etc/profile
+echo "——————————完成时区修改"
 
 
 
