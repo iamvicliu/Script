@@ -10,7 +10,7 @@ echo "——————————完成更新系统"
 
 # 安装 curl 
 echo "——————————开始安装 curl，screen等 "
-sudo apt install -y vim git curl screen htop vnstat net-tools dnsutils sudo
+sudo apt install -y vim git curl screen htop vnstat net-tools dnsutils sudo unzip
 echo "——————————完成安装 curl "
 
 
