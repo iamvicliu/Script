@@ -38,12 +38,16 @@ echo "——————————完成安装 docker"
 
 
 # 修改系统时区为 Asia/Shanghai，并且给history增加时间
-echo "——————————开始修改系统时区为 Asia/Shanghai，并且给history增加时间"
+echo "——————————开始修改系统时区为 Asia/Shanghai"
 cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 date -R
+echo "——————————完成时区修改"
+
+echo "——————————开始修改history"
 echo 'HISTTIMEFORMAT="%F %T "' >> /etc/profile
 source /etc/profile
-echo "——————————完成时区修改"
+history | tail -n 5
+echo "——————————完成history修改"
 
 
 
