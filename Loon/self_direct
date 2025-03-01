@@ -1,5 +1,5 @@
 #走直连
-#2024年9月26日14:24:44
+#2025年3月2日02:59:21
 
 
 HOST-SUFFIX, biz.weibo.com
@@ -14,5 +14,10 @@ HOST, vipapi.wps.cn
 HOST-SUFFIX, cmtelecare.com.hk
 HOST-SUFFIX, passport.umeng.com
 
+
+
 # 直连，抖音商品列表
 HOST-SUFFIX, ecombdapi.com
+
+# 直连，IPv6
+IP-CIDR6,2000::/3
