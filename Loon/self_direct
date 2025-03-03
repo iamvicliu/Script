@@ -20,4 +20,4 @@ HOST-SUFFIX, passport.umeng.com
 HOST-SUFFIX, ecombdapi.com
 
 # 直连，IPv6
-IP-CIDR6,2000::/3
+# IP-CIDR6,2000::/3
