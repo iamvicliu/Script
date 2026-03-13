@@ -1,32 +1,32 @@
 #2024年9月26日14:29:01
 
-HOST-SUFFIX, invisalign.com
-HOST-SUFFIX, jpmtl.com
-HOST-SUFFIX, madou.club
-HOST-KEYWORD, teamviewer
-HOST-KEYWORD, oracle
-HOST-KEYWORD, mxc
-HOST-SUFFIX, fast.com
-HOST-SUFFIX, cloudflare.com
-HOST-SUFFIX, bazaarvoice.com
-HOST-SUFFIX, marriott.com
-HOST-SUFFIX, squareup.com
-HOST-KEYWORD, faceapp
-HOST-KEYWORD, zhangle
-HOST-SUFFIX, liveperson.net
-HOST-SUFFIX, netverify.com
-HOST-KEYWORD, clubhouse
-HOST-KEYWORD, hsbc
-HOST, m.ctexcel.fr
-HOST, api.map.baidu.com
-HOST, wx.coastalbank.cn
-HOST, rsshub.app
-HOST-SUFFIX, zzzccc.live
-HOST-KEYWORD, ooxx
-HOST-KEYWORD, duyaoss
-HOST, testflight.center
-HOST-SUFFIX, wlvpn.com
-HOST-SUFFIX, freebinchecker.com
-HOST-SUFFIX, feedburner.com
-HOST-SUFFIX, arcot.com
-HOST-SUFFIX, appledaily.com
+DOMAIN-SUFFIX,invisalign.com
+DOMAIN-SUFFIX,jpmtl.com
+DOMAIN-SUFFIX,madou.club
+DOMAIN-KEYWORD,teamviewer
+DOMAIN-KEYWORD,oracle
+DOMAIN-KEYWORD,mxc
+DOMAIN-SUFFIX,fast.com
+DOMAIN-SUFFIX,cloudflare.com
+DOMAIN-SUFFIX,bazaarvoice.com
+DOMAIN-SUFFIX,marriott.com
+DOMAIN-SUFFIX,squareup.com
+DOMAIN-KEYWORD,faceapp
+DOMAIN-KEYWORD,zhangle
+DOMAIN-SUFFIX,liveperson.net
+DOMAIN-SUFFIX,netverify.com
+DOMAIN-KEYWORD,clubhouse
+DOMAIN-KEYWORD,hsbc
+DOMAIN,m.ctexcel.fr
+DOMAIN,api.map.baidu.com
+DOMAIN,wx.coastalbank.cn
+DOMAIN,rsshub.app
+DOMAIN-SUFFIX,zzzccc.live
+DOMAIN-KEYWORD,ooxx
+DOMAIN-KEYWORD,duyaoss
+DOMAIN,testflight.center
+DOMAIN-SUFFIX,wlvpn.com
+DOMAIN-SUFFIX,freebinchecker.com
+DOMAIN-SUFFIX,feedburner.com
+DOMAIN-SUFFIX,arcot.com
+DOMAIN-SUFFIX,appledaily.com

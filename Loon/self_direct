@@ -6,31 +6,31 @@
 # 2. default.lcf 中的 DIRECT 规则
 # 原则：优先精确域名
 
-DOMAIN-SUFFIX,biz.weibo.com
-DOMAIN-SUFFIX,promote.biz.weibo.cn
-DOMAIN-SUFFIX,getui.com
-DOMAIN,jf365.boc.cn
-DOMAIN,loc.map.baidu.com
-DOMAIN-SUFFIX,ihg.com
-DOMAIN-KEYWORD,ecitic
-DOMAIN,vipapi.wps.cn
-DOMAIN-SUFFIX,cmtelecare.com.hk
-DOMAIN-SUFFIX,passport.umeng.com
-DOMAIN-SUFFIX,kelee.one
+DOMAIN-SUFFIX,biz.weibo.com,DIRECT
+DOMAIN-SUFFIX,promote.biz.weibo.cn,DIRECT
+DOMAIN-SUFFIX,getui.com,DIRECT
+DOMAIN,jf365.boc.cn,DIRECT
+DOMAIN,loc.map.baidu.com,DIRECT
+DOMAIN-SUFFIX,ihg.com,DIRECT
+DOMAIN-KEYWORD,ecitic,DIRECT
+DOMAIN,vipapi.wps.cn,DIRECT
+DOMAIN-SUFFIX,cmtelecare.com.hk,DIRECT
+DOMAIN-SUFFIX,passport.umeng.com,DIRECT
+DOMAIN-SUFFIX,kelee.one,DIRECT
 
 # 直连，抖音商品列表
-DOMAIN-SUFFIX,ecombdapi.com
+DOMAIN-SUFFIX,ecombdapi.com,DIRECT
 
 # KDocs / 金山文档
-DOMAIN-SUFFIX,kdocs.cn
-DOMAIN-SUFFIX,wps.cn
-DOMAIN-SUFFIX,wpscdn.cn
-DOMAIN-SUFFIX,wpscdn.com
-DOMAIN-SUFFIX,ksord.com
-DOMAIN-SUFFIX,qwps.cn
-DOMAIN,mcs.zijieapi.com
-DOMAIN,abtestvm.bytedance.com
-DOMAIN,unpkg.com
+DOMAIN-SUFFIX,kdocs.cn,DIRECT
+DOMAIN-SUFFIX,wps.cn,DIRECT
+DOMAIN-SUFFIX,wpscdn.cn,DIRECT
+DOMAIN-SUFFIX,wpscdn.com,DIRECT
+DOMAIN-SUFFIX,ksord.com,DIRECT
+DOMAIN-SUFFIX,qwps.cn,DIRECT
+DOMAIN,mcs.zijieapi.com,DIRECT
+DOMAIN,abtestvm.bytedance.com,DIRECT
+DOMAIN,unpkg.com,DIRECT
 
 # 从 default.lcf 合并
 DOMAIN-SUFFIX,hk.chinamobile.com,DIRECT
