@@ -1,0 +1,4 @@
+# 本地规则拆分
+# 策略：俄罗斯手动
+
+DOMAIN-KEYWORD,yoomoney.ru,俄罗斯手动

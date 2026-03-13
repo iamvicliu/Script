@@ -1,0 +1,4 @@
+# 本地规则拆分
+# 策略：香港时延优选
+
+DOMAIN-SUFFIX,follow.is,香港时延优选

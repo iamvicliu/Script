@@ -1,0 +1,4 @@
+# 本地规则拆分
+# 策略：德国手动
+
+DOMAIN-SUFFIX,bonify.de,德国手动

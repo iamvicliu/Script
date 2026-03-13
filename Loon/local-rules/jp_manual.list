@@ -1,0 +1,10 @@
+# 本地规则拆分
+# 策略：日本手动
+
+DOMAIN-KEYWORD,diabrowser,日本手动
+DOMAIN,lambda.chat,日本手动
+DOMAIN-SUFFIX,hoo.com,日本手动
+DOMAIN-SUFFIX,mexc.com,日本手动
+DOMAIN,shuzijumin.com,日本手动
+DOMAIN-SUFFIX,deepl.com,日本手动
+DOMAIN-SUFFIX,value-domain.com,日本手动
