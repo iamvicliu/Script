@@ -1,23 +1,31 @@
-#走直连
-#2025年3月2日02:59:21
+  # 走直连
+  # 整理时间：2026-03-13
+  # 原则：优先精确域名，不使用 HOST-KEYWORD,wps
 
+  HOST-SUFFIX, biz.weibo.com
+  HOST-SUFFIX, promote.biz.weibo.cn
+  HOST-SUFFIX, getui.com
+  HOST, jf365.boc.cn
+  HOST, loc.map.baidu.com
+  HOST-SUFFIX, ihg.com
+  HOST-KEYWORD, ecitic
+  HOST, vipapi.wps.cn
+  HOST-SUFFIX, cmtelecare.com.hk
+  HOST-SUFFIX, passport.umeng.com
 
-HOST-SUFFIX, biz.weibo.com
-HOST-SUFFIX, promote.biz.weibo.cn
-HOST-SUFFIX, getui.com
-HOST, jf365.boc.cn
-HOST, loc.map.baidu.com
-HOST-SUFFIX, ihg.com
-HOST-KEYWORD, ecitic
-HOST-KEYWORD, wps
-HOST, vipapi.wps.cn
-HOST-SUFFIX, cmtelecare.com.hk
-HOST-SUFFIX, passport.umeng.com
+  # 直连，抖音商品列表
+  HOST-SUFFIX, ecombdapi.com
 
+  # 直连，IPv6
+  # IP-CIDR6,2000::/3
 
-
-# 直连，抖音商品列表
-HOST-SUFFIX, ecombdapi.com
-
-# 直连，IPv6
-# IP-CIDR6,2000::/3
+  # KDocs / 金山文档
+  HOST-SUFFIX, kdocs.cn
+  HOST-SUFFIX, wps.cn
+  HOST-SUFFIX, wpscdn.cn
+  HOST-SUFFIX, wpscdn.com
+  HOST-SUFFIX, ksord.com
+  HOST-SUFFIX, qwps.cn
+  HOST, mcs.zijieapi.com
+  HOST, abtestvm.bytedance.com
+  HOST, unpkg.com
