@@ -1,8 +1,13 @@
-#2024年9月26日14:28:02
+# 走拒绝
+# 整理时间：2026-03-14
+# 适用：Loon 远程规则集
+# 来源：
+# 1. 现有 self_reject
+# 2. default.lcf 中的 REJECT / REJECT-NO-DROP 规则
 
-#屏蔽
-HOST, pglstatp-toutiao.com
-HOST, sf3-ttcdn-tos.pstatp.com
+# 屏蔽
+DOMAIN,pglstatp-toutiao.com
+DOMAIN,sf3-ttcdn-tos.pstatp.com
 
 # 知乎去广告
 DOMAIN,118.89.204.198
@@ -10,3 +15,8 @@ DOMAIN-SUFFIX,118.89.204.198
 DOMAIN-KEYWORD,118.89.204.198
 IP-CIDR,118.89.204.198/32
 USER-AGENT,AVOS*
+
+# 从 default.lcf 合并
+DOMAIN,customer-service.cos.tx.xmcdn.com,REJECT
+IP-CIDR,203.107.1.1/24,REJECT
+IP-CIDR,95.161.76.100/31,REJECT-NO-DROP,no-resolve
