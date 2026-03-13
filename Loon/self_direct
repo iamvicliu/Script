@@ -1,0 +1,29 @@
+# 走直连
+# 整理时间：2026-03-13
+# 适用：Loon 远程规则集
+# 原则：优先精确域名，不使用 DOMAIN-KEYWORD,wps
+
+DOMAIN-SUFFIX,biz.weibo.com
+DOMAIN-SUFFIX,promote.biz.weibo.cn
+DOMAIN-SUFFIX,getui.com
+DOMAIN,jf365.boc.cn
+DOMAIN,loc.map.baidu.com
+DOMAIN-SUFFIX,ihg.com
+DOMAIN-KEYWORD,ecitic
+DOMAIN,vipapi.wps.cn
+DOMAIN-SUFFIX,cmtelecare.com.hk
+DOMAIN-SUFFIX,passport.umeng.com
+
+# 直连，抖音商品列表
+DOMAIN-SUFFIX,ecombdapi.com
+
+# KDocs / 金山文档
+DOMAIN-SUFFIX,kdocs.cn
+DOMAIN-SUFFIX,wps.cn
+DOMAIN-SUFFIX,wpscdn.cn
+DOMAIN-SUFFIX,wpscdn.com
+DOMAIN-SUFFIX,ksord.com
+DOMAIN-SUFFIX,qwps.cn
+DOMAIN,mcs.zijieapi.com
+DOMAIN,abtestvm.bytedance.com
+DOMAIN,unpkg.com
