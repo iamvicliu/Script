@@ -1,4 +1,0 @@
-# 本地规则拆分
-# 策略：REJECT-NO-DROP
-
-IP-CIDR,95.161.76.100/31,REJECT-NO-DROP,no-resolve
