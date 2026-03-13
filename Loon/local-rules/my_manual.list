@@ -1,0 +1,5 @@
+# 本地规则拆分
+# 策略：马来手动
+
+DOMAIN-KEYWORD,tngdigital,马来手动
+DOMAIN-SUFFIX,tngdigital.com.my,马来手动

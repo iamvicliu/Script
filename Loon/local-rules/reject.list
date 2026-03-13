@@ -1,0 +1,5 @@
+# 本地规则拆分
+# 策略：REJECT
+
+DOMAIN,customer-service.cos.tx.xmcdn.com,REJECT
+IP-CIDR,203.107.1.1/24,REJECT

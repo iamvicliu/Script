@@ -1,0 +1,31 @@
+# 本地规则拆分
+# 策略：香港手动
+
+DOMAIN-SUFFIX,jianguoyun.com,香港手动
+DOMAIN-SUFFIX,discordapp.com,香港手动
+DOMAIN-KEYWORD,linkedin,香港手动
+DOMAIN-SUFFIX,ihg.com.cn,香港手动
+DOMAIN-SUFFIX,sjsu.edu,香港手动
+DOMAIN-SUFFIX,chippercash.com,香港手动
+DOMAIN-SUFFIX,fal.media,香港手动
+DOMAIN-SUFFIX,hallowlib.org,香港手动
+DOMAIN-SUFFIX,linktr.ee,香港手动
+DOMAIN-SUFFIX,v2ex.com,香港手动
+DOMAIN-SUFFIX,threads.net,香港手动
+DOMAIN-SUFFIX,you.com,香港手动
+DOMAIN-SUFFIX,dropbox.com,香港手动
+DOMAIN-SUFFIX,hostloc.com,香港手动
+DOMAIN-SUFFIX,huggingface.co,香港手动
+DOMAIN-SUFFIX,z-lib.help,香港手动
+DOMAIN-SUFFIX,pornhub.com,香港手动
+DOMAIN-SUFFIX,hsbc.com.hk,香港手动
+DOMAIN-SUFFIX,greasyfork.org,香港手动
+DOMAIN-SUFFIX,bytevirt.com,香港手动
+DOMAIN-SUFFIX,nvidia.com,香港手动
+DOMAIN-SUFFIX,pathofexile.com,香港手动
+DOMAIN-SUFFIX,naixi.net,香港手动
+DOMAIN-SUFFIX,uscardforum.com,香港手动
+DOMAIN-SUFFIX,nodeseek.com,香港手动
+DOMAIN-KEYWORD,redotpay,香港手动
+DOMAIN-SUFFIX,redditstatic.com,香港手动
+DOMAIN-SUFFIX,reddit.com,香港手动
