@@ -1,6 +1,0 @@
-# 本地规则拆分
-# 策略：英国手动
-
-DOMAIN-SUFFIX,trading212.com,英国手动
-DOMAIN-KEYWORD,paysend,英国手动
-DOMAIN-SUFFIX,paysend.com,英国手动
