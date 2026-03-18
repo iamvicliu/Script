@@ -32,6 +32,21 @@ DOMAIN,mcs.zijieapi.com,DIRECT
 DOMAIN,abtestvm.bytedance.com,DIRECT
 DOMAIN,unpkg.com,DIRECT
 
+# 中国移动
+DOMAIN-SUFFIX,10086.cn,DIRECT
+DOMAIN-SUFFIX,cmpassport.com,DIRECT
+DOMAIN-KEYWORD,chinamobile,DIRECT
+DOMAIN-KEYWORD,cmcc,DIRECT
+DOMAIN-SUFFIX,miguvideo.com,DIRECT
+DOMAIN-SUFFIX,migu.cn,DIRECT
+DOMAIN-SUFFIX,migucloud.com,DIRECT                                                              
+DOMAIN-SUFFIX,cmvideo.cn,DIRECT                                                                 
+IP-CIDR,120.196.0.0/16,DIRECT,no-resolve
+IP-CIDR,221.179.0.0/16,DIRECT,no-resolve
+
+
+
+
 # 从 default.lcf 合并
 DOMAIN-SUFFIX,hk.chinamobile.com,DIRECT
 IP-CIDR,100.64.0.0/10,DIRECT
