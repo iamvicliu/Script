@@ -1,22 +1,8 @@
 # 走直连
 # 整理时间：2026-03-14
 # 适用：Loon 远程规则集
-# 来源：
-# 1. 现有 self_direct
-# 2. default.lcf 中的 DIRECT 规则
 # 原则：优先精确域名
 
-DOMAIN-SUFFIX,biz.weibo.com,DIRECT
-DOMAIN-SUFFIX,promote.biz.weibo.cn,DIRECT
-DOMAIN-SUFFIX,getui.com,DIRECT
-DOMAIN,jf365.boc.cn,DIRECT
-DOMAIN,loc.map.baidu.com,DIRECT
-DOMAIN-SUFFIX,ihg.com,DIRECT
-DOMAIN-KEYWORD,ecitic,DIRECT
-DOMAIN,vipapi.wps.cn,DIRECT
-DOMAIN-SUFFIX,cmtelecare.com.hk,DIRECT
-DOMAIN-SUFFIX,passport.umeng.com,DIRECT
-DOMAIN-SUFFIX,kelee.one,DIRECT
 
 # 直连，抖音商品列表
 DOMAIN-SUFFIX,ecombdapi.com,DIRECT
@@ -45,13 +31,23 @@ IP-CIDR,120.196.0.0/16,DIRECT,no-resolve
 IP-CIDR,221.179.0.0/16,DIRECT,no-resolve
 
 
-
-
-# 从 default.lcf 合并
+# 其他
+DOMAIN,tongji.baidu.com,DIRECT
+DOMAIN-SUFFIX,biz.weibo.com,DIRECT
+DOMAIN-SUFFIX,promote.biz.weibo.cn,DIRECT
+DOMAIN-SUFFIX,getui.com,DIRECT
+DOMAIN,jf365.boc.cn,DIRECT
+DOMAIN,loc.map.baidu.com,DIRECT
+DOMAIN-SUFFIX,ihg.com,DIRECT
+DOMAIN-KEYWORD,ecitic,DIRECT
+DOMAIN,vipapi.wps.cn,DIRECT
+DOMAIN-SUFFIX,cmtelecare.com.hk,DIRECT
+DOMAIN-SUFFIX,passport.umeng.com,DIRECT
+DOMAIN-SUFFIX,kelee.one,DIRECT
 DOMAIN-SUFFIX,hk.chinamobile.com,DIRECT
 IP-CIDR,100.64.0.0/10,DIRECT
 DOMAIN-SUFFIX,ts.net,DIRECT
-DOMAIN,vmshell.com,DIRECT
+DOMAIN-SUFFIX,vmshell.com,DIRECT
 IP-CIDR,10.1.1.0/24,DIRECT
 DOMAIN-SUFFIX,syncthing.net,DIRECT
 DOMAIN-SUFFIX,poe2db.tw,DIRECT
