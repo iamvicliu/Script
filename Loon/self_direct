@@ -30,10 +30,6 @@ DOMAIN-SUFFIX,cmvideo.cn,DIRECT
 IP-CIDR,120.196.0.0/16,DIRECT,no-resolve
 IP-CIDR,221.179.0.0/16,DIRECT,no-resolve
 
-# 内网
-DOMAIN-SUFFIX,eainc.com,DIRECT
-DOMAIN-KEYWORD,eainc,DIRECT
-
 
 # 其他
 DOMAIN,tongji.baidu.com,DIRECT
