@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2DB 多语言信息助手
 // @namespace    http://tampermonkey.net/
-// @version      2.1.5
-// @lastUpdated  2026-06-13 04:14:38 +08:00
+// @version      3.0
+// @lastUpdated  2026-06-13 04:27:29 +08:00
 // @description  POE2DB 多语言名称、三语搜索与复制助手
 // @author       维克牛
 // @contact      https://nga.178.com/nuke.php?func=ucp&uid=6888984
@@ -21,6 +21,7 @@
 
     const LANGS = ['cn', 'tw', 'us'];
     const LANG_NAMES = { cn: '简体中文', tw: '繁体中文', us: '英文' };
+    const PANEL_STATE_KEY = 'poe2db-helper-panel-expanded';
     const MARKET_SERVERS = {
         cn: { name: '国服', url: 'https://poe.game.qq.com/trade2/search/poe2/', query: false },
         tw: { name: '台服', url: 'https://pathofexile.tw/trade2', query: false },
@@ -342,6 +343,23 @@
             clearTimeout(timer);
             timer = setTimeout(() => fn(...args), delay);
         };
+    };
+
+    const isPanelExpanded = () => {
+        try {
+            return window.localStorage.getItem(PANEL_STATE_KEY) !== '0';
+        } catch (error) {
+            console.warn('POE2DB 助手读取面板状态失败', error);
+            return true;
+        }
+    };
+
+    const rememberPanelExpanded = (expanded) => {
+        try {
+            window.localStorage.setItem(PANEL_STATE_KEY, expanded ? '1' : '0');
+        } catch (error) {
+            console.warn('POE2DB 助手保存面板状态失败', error);
+        }
     };
 
     const getCurrentLangAndPath = () => {
@@ -676,6 +694,7 @@
         panel.querySelector('.poe-helper-close').addEventListener('click', () => {
             panel.remove();
             state.panel = null;
+            rememberPanelExpanded(false);
         });
 
         const debouncedSearch = debounce(() => handleSearch(panel), 350);
@@ -705,9 +724,11 @@
         if (state.panel) {
             state.panel.remove();
             state.panel = null;
+            rememberPanelExpanded(false);
             return;
         }
         state.panel = createPanel();
+        rememberPanelExpanded(true);
     };
 
     const createToggle = () => {
@@ -722,7 +743,9 @@
 
     const start = () => {
         createToggle();
-        togglePanel();
+        if (isPanelExpanded()) {
+            state.panel = createPanel();
+        }
     };
 
     if (document.readyState === 'loading') {
