@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2DB 多语言信息助手
 // @namespace    http://tampermonkey.net/
-// @version      2.1.4
-// @lastUpdated  2026-06-13 03:43:13 +08:00
+// @version      2.1.5
+// @lastUpdated  2026-06-13 04:14:38 +08:00
 // @description  POE2DB 多语言名称、三语搜索与复制助手
 // @author       维克牛
 // @contact      https://nga.178.com/nuke.php?func=ucp&uid=6888984
