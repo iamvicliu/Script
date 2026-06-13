@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2DB 多语言信息助手
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1
-// @lastUpdated  2026-06-13 20:51:33 +08:00
+// @version      3.3
+// @lastUpdated  2026-06-13 21:05:22 +08:00
 // @description  POE2DB 多语言名称、三语搜索与复制助手
 // @author       维克牛
 // @contact      https://nga.178.com/nuke.php?func=ucp&uid=6888984
@@ -23,7 +23,9 @@
     const LANG_NAMES = { cn: '简体中文', tw: '繁体中文', us: '英文' };
     const PANEL_STATE_KEY = 'poe2db-helper-panel-expanded';
     const RECENT_ITEMS_KEY = 'poe2db-helper-recent-items';
+    const VISITED_PAGES_KEY = 'poe2db-helper-visited-pages';
     const MAX_RECENT_ITEMS = 5;
+    const MAX_VISITED_PAGES = 8;
     const MARKET_SERVERS = {
         cn: { name: '国服', url: 'https://poe.game.qq.com/trade2/search/poe2/', query: false },
         tw: { name: '台服', url: 'https://pathofexile.tw/trade2', query: false },
@@ -286,29 +288,30 @@
             font-size: 12px;
         }
         .poe-helper-section {
-            margin-top: 8px;
-            padding: 10px;
+            margin-top: 6px;
+            padding: 8px 9px;
             border-radius: 4px;
             border: 1px solid rgba(154, 119, 70, 0.24);
             background: rgba(28, 24, 18, 0.6);
         }
         .poe-helper-section-title {
-            margin-bottom: 6px;
+            margin-bottom: 4px;
             color: #d9c08a;
             font-size: 13px;
             font-weight: 700;
+            line-height: 1.25;
         }
         .poe-helper-name-row {
             display: grid;
             grid-template-columns: 1fr auto;
-            align-items: start;
-            gap: 8px;
+            align-items: center;
+            gap: 6px;
         }
         .poe-helper-name {
             min-width: 0;
             color: #eee6d3;
             font-size: 13px;
-            line-height: 1.45;
+            line-height: 1.3;
             overflow-wrap: anywhere;
             word-break: normal;
         }
@@ -317,14 +320,76 @@
             gap: 4px;
             flex-wrap: wrap;
             justify-content: flex-end;
+            align-items: center;
         }
         .poe-helper-btn {
-            padding: 4px 7px;
+            padding: 3px 7px;
+            line-height: 1.35;
         }
         .poe-helper-buy {
             border-color: rgba(88, 142, 111, 0.46);
             background: rgba(17, 72, 52, 0.42);
             color: #9fd6b4;
+        }
+        .poe-helper-history {
+            margin-top: 8px;
+        }
+        .poe-helper-history-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .poe-helper-history-clear {
+            border: 0;
+            background: transparent;
+            color: #9f9686;
+            cursor: pointer;
+            font-size: 11px;
+            padding: 2px 0;
+        }
+        .poe-helper-history-clear:hover {
+            color: #d9c08a;
+        }
+        .poe-helper-history-list {
+            display: grid;
+            gap: 4px;
+        }
+        .poe-helper-history-row {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: start;
+            gap: 7px;
+            padding: 5px 6px;
+            border-radius: 4px;
+            color: #d9d1bf;
+            cursor: pointer;
+        }
+        .poe-helper-history-row:hover {
+            background: rgba(154, 119, 70, 0.16);
+            color: #ffe2a0;
+        }
+        .poe-helper-history-name {
+            min-width: 0;
+            font-size: 12px;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
+        .poe-helper-history-delete {
+            width: 18px;
+            height: 18px;
+            border-radius: 3px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: #8f8574;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .poe-helper-history-delete:hover {
+            border-color: rgba(151, 75, 55, 0.45);
+            background: rgba(58, 24, 18, 0.45);
+            color: #d99a84;
         }
         .poe-helper-toast {
             position: fixed;
@@ -363,10 +428,10 @@
                 max-height: 78vh;
             }
             .poe-helper-name-row {
-                grid-template-columns: 1fr;
+                grid-template-columns: 1fr auto;
             }
             .poe-helper-actions {
-                justify-content: flex-start;
+                justify-content: flex-end;
             }
         }
     `);
@@ -448,6 +513,48 @@
             lastLang: lang
         });
         saveRecentItems(recent);
+    };
+
+    const getVisitedPages = () => {
+        try {
+            const parsed = JSON.parse(window.localStorage.getItem(VISITED_PAGES_KEY) || '[]');
+            return Array.isArray(parsed) ? parsed.slice(0, MAX_VISITED_PAGES) : [];
+        } catch (error) {
+            console.warn('POE2DB 助手读取最近访问失败', error);
+            return [];
+        }
+    };
+
+    const saveVisitedPages = (items) => {
+        try {
+            window.localStorage.setItem(VISITED_PAGES_KEY, JSON.stringify(items.slice(0, MAX_VISITED_PAGES)));
+        } catch (error) {
+            console.warn('POE2DB 助手保存最近访问失败', error);
+        }
+    };
+
+    const rememberVisitedPage = (entry) => {
+        if (!entry.path || ['cn', 'tw', 'us'].includes(entry.path)) return getVisitedPages();
+
+        const labels = Object.fromEntries(
+            Object.entries(entry.labels || {}).filter(([, value]) => value && value !== 'N/A' && value !== '加载失败')
+        );
+
+        if (!Object.keys(labels).length) return getVisitedPages();
+
+        const visited = getVisitedPages().filter((item) => item.path !== entry.path);
+        visited.unshift({
+            path: entry.path,
+            labels,
+            lastLang: entry.lang,
+            visitedAt: Date.now()
+        });
+        saveVisitedPages(visited);
+        return visited;
+    };
+
+    const removeVisitedPage = (path) => {
+        saveVisitedPages(getVisitedPages().filter((item) => item.path !== path));
     };
 
     const getCurrentLangAndPath = () => {
@@ -681,6 +788,11 @@
         window.location.href = `https://poe2db.tw/${lang}/${result.path}`;
     };
 
+    const openVisitedPage = (entry) => {
+        const lang = LANGS.includes(entry.lastLang) ? entry.lastLang : 'cn';
+        window.location.href = `https://poe2db.tw/${lang}/${entry.path}`;
+    };
+
     const renderSearchResults = (container, results, options = {}) => {
         container.innerHTML = '';
         if (!results.length) {
@@ -759,8 +871,68 @@
         }
     };
 
-    const renderLangSections = (panel, langInfoMap, path) => {
+    const renderVisitedPages = (items) => {
+        if (!items.length) return '';
+
+        return `
+            <div class="poe-helper-section poe-helper-history">
+                <div class="poe-helper-history-head">
+                    <div class="poe-helper-section-title">最近访问</div>
+                    <button class="poe-helper-history-clear" data-action="clear-visited" type="button">清空</button>
+                </div>
+                <div class="poe-helper-history-list">
+                    ${items.map((item) => {
+                        const lang = LANGS.includes(item.lastLang) ? item.lastLang : 'cn';
+                        const title = item.labels?.[lang] || item.labels?.cn || item.labels?.tw || item.labels?.us || item.path;
+                        return `
+                            <div class="poe-helper-history-row" data-action="open-visited" data-path="${escapeHtml(item.path)}">
+                                <span class="poe-helper-lang-badge ${lang}">${lang === 'us' ? 'EN' : lang === 'tw' ? '繁' : '简'}</span>
+                                <span class="poe-helper-history-name">${escapeHtml(title)}</span>
+                                <button class="poe-helper-history-delete" data-action="delete-visited" data-path="${escapeHtml(item.path)}" type="button" title="删除">×</button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    };
+
+    const refreshVisitedPages = (content) => {
+        content.querySelector('.poe-helper-history')?.remove();
+        const html = renderVisitedPages(getVisitedPages());
+        if (html) {
+            content.insertAdjacentHTML('beforeend', html);
+            bindVisitedPageEvents(content);
+        }
+    };
+
+    const bindVisitedPageEvents = (content) => {
+        content.querySelectorAll('[data-action="open-visited"]').forEach((row) => {
+            row.addEventListener('click', () => {
+                const entry = getVisitedPages().find((item) => item.path === row.dataset.path);
+                if (entry) openVisitedPage(entry);
+            });
+        });
+
+        content.querySelectorAll('[data-action="delete-visited"]').forEach((button) => {
+            button.addEventListener('click', (event) => {
+                event.stopPropagation();
+                removeVisitedPage(button.dataset.path);
+                refreshVisitedPages(content);
+            });
+        });
+
+        content.querySelector('[data-action="clear-visited"]')?.addEventListener('click', () => {
+            saveVisitedPages([]);
+            refreshVisitedPages(content);
+        });
+    };
+
+    const renderLangSections = (panel, langInfoMap, path, currentLang) => {
         const content = panel.querySelector('.poe-helper-content');
+        const labels = Object.fromEntries(LANGS.map((lang) => [lang, langInfoMap[lang]?.title || '']));
+        const visitedItems = rememberVisitedPage({ path, lang: currentLang, labels });
+
         content.innerHTML = LANGS.map((lang) => {
             const info = langInfoMap[lang] || { title: '加载失败' };
             const title = info.title || 'N/A';
@@ -776,7 +948,7 @@
                     </div>
                 </div>
             `;
-        }).join('');
+        }).join('') + renderVisitedPages(visitedItems);
 
         content.querySelectorAll('.poe-helper-btn').forEach((button) => {
             button.addEventListener('click', () => {
@@ -785,6 +957,8 @@
                 if (action === 'buy') buyItem(button.dataset.name, button.dataset.lang);
             });
         });
+
+        bindVisitedPageEvents(content);
     };
 
     const loadPanelInfo = async (panel) => {
@@ -805,7 +979,7 @@
         });
 
         await Promise.all(tasks);
-        renderLangSections(panel, langInfoMap, current.path);
+        renderLangSections(panel, langInfoMap, current.path, current.lang);
     };
 
     const createPanel = () => {
