@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2DB 多语言信息助手
 // @namespace    http://tampermonkey.net/
-// @version      3.1
-// @lastUpdated  2026-06-13 17:04:54 +08:00
+// @version      3.2
+// @lastUpdated  2026-06-13 17:52:03 +08:00
 // @description  POE2DB 多语言名称、三语搜索与复制助手
 // @author       维克牛
 // @contact      https://nga.178.com/nuke.php?func=ucp&uid=6888984
@@ -22,6 +22,8 @@
     const LANGS = ['cn', 'tw', 'us'];
     const LANG_NAMES = { cn: '简体中文', tw: '繁体中文', us: '英文' };
     const PANEL_STATE_KEY = 'poe2db-helper-panel-expanded';
+    const RECENT_ITEMS_KEY = 'poe2db-helper-recent-items';
+    const MAX_RECENT_ITEMS = 5;
     const MARKET_SERVERS = {
         cn: { name: '国服', url: 'https://poe.game.qq.com/trade2/search/poe2/', query: false },
         tw: { name: '台服', url: 'https://pathofexile.tw/trade2', query: false },
@@ -173,21 +175,21 @@
             background: rgba(154, 119, 70, 0.16);
         }
         .poe-helper-result-top {
-            display: grid;
-            grid-template-columns: 1fr auto;
+            display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 8px;
+            margin-bottom: 6px;
         }
         .poe-helper-result-name {
             min-width: 0;
             color: #e7dfce;
             font-size: 13px;
             font-weight: 600;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
         }
-        .poe-helper-lang-badge {
+        .poe-helper-type-badge {
             flex: none;
             padding: 2px 7px;
             border-radius: 999px;
@@ -196,6 +198,56 @@
             color: #d9c08a;
             font-size: 11px;
             line-height: 1.35;
+        }
+        .poe-helper-result-langs {
+            display: grid;
+            gap: 4px;
+        }
+        .poe-helper-result-lang {
+            display: grid;
+            grid-template-columns: 34px 1fr auto;
+            align-items: start;
+            gap: 7px;
+            padding: 3px 5px;
+            border-radius: 4px;
+            color: #d9d1bf;
+            font-size: 12px;
+            line-height: 1.35;
+            cursor: pointer;
+            transition: background 0.12s ease, color 0.12s ease;
+        }
+        .poe-helper-result-lang:hover {
+            background: rgba(154, 119, 70, 0.18);
+        }
+        .poe-helper-lang-badge {
+            align-self: start;
+            padding: 1px 5px;
+            border-radius: 3px;
+            border: 1px solid rgba(154, 119, 70, 0.4);
+            background: rgba(55, 40, 24, 0.6);
+            color: #d9c08a;
+            font-size: 11px;
+            line-height: 1.35;
+            text-align: center;
+        }
+        .poe-helper-lang-text {
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+        .poe-helper-open-mark {
+            color: #9f9686;
+            font-size: 12px;
+            line-height: 1.35;
+            opacity: 0.72;
+            transition: color 0.12s ease, transform 0.12s ease, opacity 0.12s ease;
+        }
+        .poe-helper-result-lang:hover .poe-helper-lang-text {
+            color: #ffe2a0;
+        }
+        .poe-helper-result-lang:hover .poe-helper-open-mark {
+            color: #d9c08a;
+            opacity: 1;
+            transform: translateX(1px);
         }
         .poe-helper-lang-badge.cn {
             border-color: rgba(88, 142, 111, 0.45);
@@ -219,6 +271,12 @@
             margin-top: 3px;
             color: #9f9686;
             font-size: 11px;
+        }
+        .poe-helper-recent-title {
+            padding: 8px 10px 4px;
+            color: #d9c08a;
+            font-size: 12px;
+            font-weight: 700;
         }
         .poe-helper-empty,
         .poe-helper-loading {
@@ -363,6 +421,35 @@
         }
     };
 
+    const getRecentItems = () => {
+        try {
+            const parsed = JSON.parse(window.localStorage.getItem(RECENT_ITEMS_KEY) || '[]');
+            return Array.isArray(parsed) ? parsed.slice(0, MAX_RECENT_ITEMS) : [];
+        } catch (error) {
+            console.warn('POE2DB 助手读取最近打开失败', error);
+            return [];
+        }
+    };
+
+    const saveRecentItems = (items) => {
+        try {
+            window.localStorage.setItem(RECENT_ITEMS_KEY, JSON.stringify(items.slice(0, MAX_RECENT_ITEMS)));
+        } catch (error) {
+            console.warn('POE2DB 助手保存最近打开失败', error);
+        }
+    };
+
+    const rememberRecentItem = (item, lang) => {
+        const recent = getRecentItems().filter((entry) => entry.path !== item.path);
+        recent.unshift({
+            path: item.path,
+            labels: item.labels,
+            desc: item.desc || '',
+            lastLang: lang
+        });
+        saveRecentItems(recent);
+    };
+
     const getCurrentLangAndPath = () => {
         const match = window.location.href.match(/^https:\/\/poe2db\.tw\/(cn|tw|us)\/?(.*)$/);
         if (!match) return null;
@@ -475,37 +562,56 @@
         const q = query.trim().toLowerCase();
         if (!q) return [];
 
-        const perLangResults = LANGS.map((lang) => {
-            const matches = [];
-            const seen = new Set();
+        const groups = new Map();
+
+        for (const lang of LANGS) {
+            let langMatches = 0;
 
             for (const item of state.searchIndex[lang] || []) {
-                if (item.searchText.includes(q)) {
-                    const path = item.path;
-                    if (seen.has(path)) continue;
-                    seen.add(path);
-                    matches.push({
-                        lang,
-                        path,
-                        label: item.label,
-                        desc: item.desc,
-                        score: item.labelLower === q ? 0 : item.labelLower.startsWith(q) ? 1 : item.valueLower.includes(q) ? 2 : 3
+                if (!item.searchText.includes(q)) continue;
+
+                const score = item.labelLower === q ? 0 : item.labelLower.startsWith(q) ? 1 : item.valueLower.includes(q) ? 2 : 3;
+                const existing = groups.get(item.path);
+
+                if (!existing) {
+                    groups.set(item.path, {
+                        path: item.path,
+                        desc: item.desc || '',
+                        score,
+                        matchedLangs: new Set([lang])
                     });
-                    if (matches.length >= 12) break;
+                } else {
+                    existing.score = Math.min(existing.score, score);
+                    existing.desc = existing.desc || item.desc || '';
+                    existing.matchedLangs.add(lang);
                 }
-            }
 
-            return matches.sort((a, b) => a.score - b.score || a.label.length - b.label.length);
-        });
-
-        const merged = [];
-        for (let index = 0; index < 12; index++) {
-            for (const group of perLangResults) {
-                if (group[index]) merged.push(group[index]);
+                langMatches++;
+                if (langMatches >= 18) break;
             }
         }
 
-        return merged.slice(0, 36);
+        return [...groups.values()]
+            .map((group) => {
+                const labels = {};
+                const descs = [];
+
+                for (const lang of LANGS) {
+                    const item = state.autocompleteByValue[lang]?.get(group.path);
+                    if (item?.label) labels[lang] = item.label;
+                    if (item?.desc) descs.push(item.desc);
+                }
+
+                return {
+                    path: group.path,
+                    labels,
+                    desc: group.desc || descs[0] || '',
+                    score: group.score,
+                    matchedLangCount: group.matchedLangs.size
+                };
+            })
+            .sort((a, b) => a.score - b.score || b.matchedLangCount - a.matchedLangCount || (a.labels.cn || a.labels.tw || a.labels.us || a.path).length - (b.labels.cn || b.labels.tw || b.labels.us || b.path).length)
+            .slice(0, 18);
     };
 
     const extractInfoFromDocument = (doc) => {
@@ -570,7 +676,12 @@
         setTimeout(() => window.open(url, '_blank'), 800);
     };
 
-    const renderSearchResults = (container, results) => {
+    const openSearchResult = (result, lang) => {
+        rememberRecentItem(result, lang);
+        window.location.href = `https://poe2db.tw/${lang}/${result.path}`;
+    };
+
+    const renderSearchResults = (container, results, options = {}) => {
         container.innerHTML = '';
         if (!results.length) {
             container.innerHTML = '<div class="poe-helper-empty">未找到相关结果</div>';
@@ -578,21 +689,41 @@
             return;
         }
 
+        if (options.title) {
+            const title = document.createElement('div');
+            title.className = 'poe-helper-recent-title';
+            title.textContent = options.title;
+            container.appendChild(title);
+        }
+
         for (const result of results) {
             const row = document.createElement('div');
             row.className = 'poe-helper-result';
+            const primaryLabel = result.labels.cn || result.labels.tw || result.labels.us || result.path;
+            const typeText = result.desc || '条目';
+            const langRows = LANGS
+                .filter((lang) => result.labels[lang])
+                .map((lang) => `
+                    <div class="poe-helper-result-lang" data-lang="${lang}">
+                        <span class="poe-helper-lang-badge ${lang}">${lang === 'us' ? 'EN' : lang === 'tw' ? '繁' : '简'}</span>
+                        <span class="poe-helper-lang-text">${escapeHtml(result.labels[lang])}</span>
+                        <span class="poe-helper-open-mark">›</span>
+                    </div>
+                `)
+                .join('');
+
             row.innerHTML = `
                 <div class="poe-helper-result-top">
-                    <div class="poe-helper-result-name">${escapeHtml(result.label)}</div>
-                    <span class="poe-helper-lang-badge ${escapeHtml(result.lang)}">${LANG_NAMES[result.lang]}</span>
+                    <div class="poe-helper-result-name">${escapeHtml(primaryLabel)}</div>
+                    <span class="poe-helper-type-badge">${escapeHtml(typeText)}</span>
                 </div>
-                <div class="poe-helper-result-desc">
-                    <span>${escapeHtml(result.desc)}</span>
-                    <span>poe2db.tw/${escapeHtml(result.lang)}</span>
-                </div>
+                <div class="poe-helper-result-langs">${langRows}</div>
             `;
-            row.addEventListener('click', () => {
-                window.location.href = `https://poe2db.tw/${result.lang}/${result.path}`;
+            row.querySelectorAll('.poe-helper-result-lang').forEach((langRow) => {
+                langRow.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    openSearchResult(result, langRow.dataset.lang);
+                });
             });
             container.appendChild(row);
         }
@@ -606,8 +737,13 @@
         const query = input.value.trim();
 
         if (!query) {
-            resultsBox.classList.remove('active');
-            resultsBox.innerHTML = '';
+            const recent = getRecentItems();
+            if (recent.length) {
+                renderSearchResults(resultsBox, recent, { title: '最近打开' });
+            } else {
+                resultsBox.classList.remove('active');
+                resultsBox.innerHTML = '';
+            }
             return;
         }
 
@@ -708,7 +844,13 @@
             if (event.key === 'Enter') handleSearch(panel);
         });
         searchInput.addEventListener('focus', () => {
-            if (resultsBox.children.length) resultsBox.classList.add('active');
+            if (resultsBox.children.length) {
+                resultsBox.classList.add('active');
+                return;
+            }
+
+            const recent = getRecentItems();
+            if (recent.length) renderSearchResults(resultsBox, recent, { title: '最近打开' });
         });
         searchButton.addEventListener('click', () => handleSearch(panel));
 
