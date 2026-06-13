@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2DB 多语言信息助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0
-// @lastUpdated  2026-06-13 04:27:29 +08:00
+// @version      3.1
+// @lastUpdated  2026-06-13 17:04:54 +08:00
 // @description  POE2DB 多语言名称、三语搜索与复制助手
 // @author       维克牛
 // @contact      https://nga.178.com/nuke.php?func=ucp&uid=6888984
@@ -42,61 +42,61 @@
     GM_addStyle(`
         .poe-helper-toggle {
             position: fixed;
-            top: 20px;
-            right: 20px;
+            top: 8px;
+            right: 8px;
             z-index: 9999;
-            padding: 8px 14px;
-            border-radius: 18px;
-            border: 1px solid rgba(99, 102, 241, 0.38);
-            background: rgba(30, 41, 59, 0.88);
-            color: #c7d2fe;
+            padding: 7px 12px;
+            border-radius: 4px;
+            border: 1px solid rgba(180, 137, 72, 0.5);
+            background: rgba(19, 16, 13, 0.9);
+            color: #d9c08a;
             font-size: 13px;
             cursor: pointer;
-            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.42);
             backdrop-filter: blur(10px);
         }
         .poe-helper-toggle:hover {
-            background: rgba(49, 46, 129, 0.92);
-            color: #fff;
+            background: rgba(45, 34, 23, 0.95);
+            color: #f3d99b;
         }
         .poe-helper-panel {
             position: fixed;
-            top: 20px;
-            right: 20px;
-            width: 390px;
+            top: 8px;
+            right: 8px;
+            width: 320px;
             max-height: 82vh;
             overflow-y: auto;
             z-index: 10000;
-            padding: 16px;
-            border-radius: 10px;
-            border: 1px solid rgba(148, 163, 184, 0.22);
-            background: rgba(15, 23, 42, 0.96);
-            color: #e2e8f0;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(154, 119, 70, 0.48);
+            background: rgba(10, 9, 8, 0.94);
+            color: #d7d0bd;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            box-shadow: 0 18px 42px rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(12px);
+            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(8px);
         }
         .poe-helper-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
-            margin-bottom: 14px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(154, 119, 70, 0.32);
         }
         .poe-helper-title {
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 700;
-            color: #c7d2fe;
+            color: #d9c08a;
         }
         .poe-helper-close {
-            width: 28px;
-            height: 28px;
-            border-radius: 6px;
-            border: 1px solid rgba(248, 113, 113, 0.35);
-            background: rgba(127, 29, 29, 0.25);
-            color: #fca5a5;
+            width: 26px;
+            height: 26px;
+            border-radius: 4px;
+            border: 1px solid rgba(151, 75, 55, 0.62);
+            background: rgba(58, 24, 18, 0.52);
+            color: #d99a84;
             cursor: pointer;
             font-size: 18px;
             line-height: 1;
@@ -109,44 +109,44 @@
             width: 100%;
             min-width: 0;
             box-sizing: border-box;
-            border-radius: 6px;
-            border: 1px solid rgba(148, 163, 184, 0.22);
-            background: rgba(15, 23, 42, 0.9);
-            color: #e2e8f0;
+            border-radius: 4px;
+            border: 1px solid rgba(154, 119, 70, 0.42);
+            background: rgba(18, 16, 13, 0.82);
+            color: #e2dccd;
             outline: none;
         }
         .poe-helper-search {
             position: relative;
             display: grid;
             grid-template-columns: 1fr auto;
-            gap: 8px;
-            margin-bottom: 14px;
+            gap: 6px;
+            margin-bottom: 10px;
         }
         .poe-helper-input {
-            padding: 8px 10px;
+            padding: 7px 9px;
             font-size: 13px;
         }
         .poe-helper-input:focus {
-            border-color: rgba(129, 140, 248, 0.72);
-            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.18);
+            border-color: rgba(217, 176, 95, 0.7);
+            box-shadow: 0 0 0 2px rgba(154, 119, 70, 0.18);
         }
         .poe-helper-search-btn,
         .poe-helper-btn {
-            border-radius: 6px;
-            border: 1px solid rgba(99, 102, 241, 0.34);
-            background: rgba(79, 70, 229, 0.2);
-            color: #c7d2fe;
+            border-radius: 4px;
+            border: 1px solid rgba(154, 119, 70, 0.48);
+            background: rgba(48, 36, 24, 0.78);
+            color: #e3c886;
             cursor: pointer;
             font-size: 12px;
         }
         .poe-helper-search-btn {
-            padding: 0 14px;
+            padding: 0 12px;
             font-weight: 600;
         }
         .poe-helper-search-btn:hover,
         .poe-helper-btn:hover {
-            background: rgba(79, 70, 229, 0.32);
-            color: #fff;
+            background: rgba(85, 62, 34, 0.9);
+            color: #ffe2a0;
         }
         .poe-helper-results {
             position: absolute;
@@ -156,21 +156,21 @@
             display: none;
             max-height: 320px;
             overflow-y: auto;
-            border-radius: 8px;
-            border: 1px solid rgba(99, 102, 241, 0.34);
-            background: rgba(15, 23, 42, 0.98);
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+            border-radius: 4px;
+            border: 1px solid rgba(154, 119, 70, 0.45);
+            background: rgba(12, 10, 8, 0.98);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.56);
         }
         .poe-helper-results.active {
             display: block;
         }
         .poe-helper-result {
             padding: 8px 10px;
-            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            border-bottom: 1px solid rgba(154, 119, 70, 0.14);
             cursor: pointer;
         }
         .poe-helper-result:hover {
-            background: rgba(99, 102, 241, 0.18);
+            background: rgba(154, 119, 70, 0.16);
         }
         .poe-helper-result-top {
             display: grid;
@@ -180,7 +180,7 @@
         }
         .poe-helper-result-name {
             min-width: 0;
-            color: #e2e8f0;
+            color: #e7dfce;
             font-size: 13px;
             font-weight: 600;
             white-space: nowrap;
@@ -191,52 +191,52 @@
             flex: none;
             padding: 2px 7px;
             border-radius: 999px;
-            border: 1px solid rgba(129, 140, 248, 0.34);
-            background: rgba(67, 56, 202, 0.28);
-            color: #c7d2fe;
+            border: 1px solid rgba(154, 119, 70, 0.4);
+            background: rgba(55, 40, 24, 0.6);
+            color: #d9c08a;
             font-size: 11px;
             line-height: 1.35;
         }
         .poe-helper-lang-badge.cn {
-            border-color: rgba(52, 211, 153, 0.34);
-            background: rgba(6, 95, 70, 0.22);
-            color: #86efac;
+            border-color: rgba(88, 142, 111, 0.45);
+            background: rgba(24, 63, 48, 0.48);
+            color: #9fd6b4;
         }
         .poe-helper-lang-badge.tw {
-            border-color: rgba(129, 140, 248, 0.38);
-            background: rgba(67, 56, 202, 0.28);
-            color: #c7d2fe;
+            border-color: rgba(154, 119, 70, 0.45);
+            background: rgba(55, 40, 24, 0.6);
+            color: #d9c08a;
         }
         .poe-helper-lang-badge.us {
-            border-color: rgba(251, 191, 36, 0.36);
-            background: rgba(146, 64, 14, 0.2);
-            color: #fde68a;
+            border-color: rgba(121, 139, 166, 0.45);
+            background: rgba(34, 42, 55, 0.5);
+            color: #c9d4e6;
         }
         .poe-helper-result-desc {
             display: flex;
             justify-content: space-between;
             gap: 8px;
             margin-top: 3px;
-            color: #94a3b8;
+            color: #9f9686;
             font-size: 11px;
         }
         .poe-helper-empty,
         .poe-helper-loading {
             padding: 18px 10px;
             text-align: center;
-            color: #94a3b8;
+            color: #9f9686;
             font-size: 12px;
         }
         .poe-helper-section {
-            margin-top: 10px;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid rgba(148, 163, 184, 0.14);
-            background: rgba(30, 41, 59, 0.48);
+            margin-top: 8px;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid rgba(154, 119, 70, 0.24);
+            background: rgba(28, 24, 18, 0.6);
         }
         .poe-helper-section-title {
-            margin-bottom: 8px;
-            color: #a5b4fc;
+            margin-bottom: 6px;
+            color: #d9c08a;
             font-size: 13px;
             font-weight: 700;
         }
@@ -248,10 +248,11 @@
         }
         .poe-helper-name {
             min-width: 0;
-            color: #e2e8f0;
+            color: #eee6d3;
             font-size: 13px;
             line-height: 1.45;
-            word-break: break-word;
+            overflow-wrap: anywhere;
+            word-break: normal;
         }
         .poe-helper-actions {
             display: flex;
@@ -263,9 +264,9 @@
             padding: 4px 7px;
         }
         .poe-helper-buy {
-            border-color: rgba(52, 211, 153, 0.35);
-            background: rgba(6, 95, 70, 0.22);
-            color: #86efac;
+            border-color: rgba(88, 142, 111, 0.46);
+            background: rgba(17, 72, 52, 0.42);
+            color: #9fd6b4;
         }
         .poe-helper-toast {
             position: fixed;
@@ -297,9 +298,9 @@
         }
         @media (max-width: 768px) {
             .poe-helper-panel {
-                top: 10px;
-                right: 10px;
-                left: 10px;
+                top: 8px;
+                right: 8px;
+                left: 8px;
                 width: auto;
                 max-height: 78vh;
             }
