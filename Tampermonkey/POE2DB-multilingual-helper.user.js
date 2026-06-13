@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2DB 多语言信息助手
 // @namespace    http://tampermonkey.net/
-// @version      3.2
-// @lastUpdated  2026-06-13 17:52:03 +08:00
+// @version      3.2.1
+// @lastUpdated  2026-06-13 20:51:33 +08:00
 // @description  POE2DB 多语言名称、三语搜索与复制助手
 // @author       维克牛
 // @contact      https://nga.178.com/nuke.php?func=ucp&uid=6888984
@@ -835,9 +835,14 @@
         });
 
         const debouncedSearch = debounce(() => handleSearch(panel), 350);
+        const searchArea = panel.querySelector('.poe-helper-search');
         const searchInput = panel.querySelector('.poe-helper-input');
         const searchButton = panel.querySelector('.poe-helper-search-btn');
         const resultsBox = panel.querySelector('.poe-helper-results');
+
+        const hideResults = () => {
+            resultsBox.classList.remove('active');
+        };
 
         searchInput.addEventListener('input', debouncedSearch);
         searchInput.addEventListener('keydown', (event) => {
@@ -852,10 +857,15 @@
             const recent = getRecentItems();
             if (recent.length) renderSearchResults(resultsBox, recent, { title: '最近打开' });
         });
+        searchInput.addEventListener('blur', () => {
+            setTimeout(() => {
+                if (!searchArea.contains(document.activeElement)) hideResults();
+            }, 120);
+        });
         searchButton.addEventListener('click', () => handleSearch(panel));
 
         document.addEventListener('click', (event) => {
-            if (!panel.contains(event.target)) resultsBox.classList.remove('active');
+            if (!searchArea.contains(event.target)) hideResults();
         });
 
         loadAutocompleteData().catch((error) => console.error(error));
