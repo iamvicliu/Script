@@ -68,7 +68,7 @@
             top: 8px;
             right: 8px;
             width: 320px;
-            max-height: 82vh;
+            max-height: calc(100vh - 24px);
             overflow-y: auto;
             z-index: 10000;
             padding: 12px;
@@ -158,7 +158,7 @@
             left: 0;
             right: 0;
             display: none;
-            max-height: 320px;
+            max-height: min(520px, calc(100vh - 190px));
             overflow-y: auto;
             border-radius: 4px;
             border: 1px solid rgba(154, 119, 70, 0.45);
@@ -425,7 +425,7 @@
                 right: 8px;
                 left: 8px;
                 width: auto;
-                max-height: 78vh;
+                max-height: calc(100vh - 20px);
             }
             .poe-helper-name-row {
                 grid-template-columns: 1fr auto;
