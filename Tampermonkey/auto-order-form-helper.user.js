@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         购买填单自动选择助手
 // @namespace    local.codex.order-form-helper
-// @version      0.1.0
-// @description  自动勾选买家购买协议、选择不购买安全服务，并在提醒弹窗中选择暂不购买。
+// @version      0.2.0
+// @description  自动勾选买家购买协议、选择不购买安全服务、确认暂不购买提醒，并点击去支付。
 // @author       Codex
 // @match        https://trade.7881.com/trade-*.html*
 // @include      https://trade.7881.com/trade-*.html*
@@ -16,10 +16,12 @@
     const AGREEMENT_KEY = 'codex_order_helper_agreement_signature_v1';
     const RUN_INTERVAL_MS = 600;
     const MAX_RUNS = 40;
+    const DRY_RUN_PAY = Boolean(window.__ORDER_HELPER_DRY_RUN_PAY__);
 
     let runs = 0;
     let noBuyClicked = false;
     let dialogNoBuyClicked = false;
+    let payClicked = false;
     let observerStarted = false;
 
     const normalize = (text) => (text || '').replace(/\s+/g, '').trim();
@@ -142,6 +144,29 @@
         noBuyClicked = true;
     }
 
+    function findNoBuyCard() {
+        return document.querySelector('.safe-item[extend-id="0"], .safe-item[axg-rule-id="0"]');
+    }
+
+    function noBuyLooksSelected() {
+        const card = findNoBuyCard();
+        if (!card) return noBuyClicked;
+
+        const className = String(card.className || '');
+        if (/(active|select|selected|checked|cur)/i.test(className)) return true;
+
+        const rect = card.getBoundingClientRect();
+        const cornerX = Math.max(0, rect.right - 10);
+        const cornerY = Math.max(0, rect.bottom - 10);
+        const cornerEl = document.elementFromPoint(cornerX, cornerY);
+        return noBuyClicked || Boolean(cornerEl && card.contains(cornerEl));
+    }
+
+    function blockingDialogVisible() {
+        return Array.from(document.querySelectorAll('.wxts05, .layui-layer, .prevent-fraud-pop'))
+            .some((el) => visible(el) && /安心购|暂不购买|温馨提示|不再提示/.test(normalize(el.innerText)));
+    }
+
     function clickDialogTemporaryNoBuy() {
         if (dialogNoBuyClicked) return;
 
@@ -159,11 +184,33 @@
         dialogNoBuyClicked = true;
     }
 
+    function clickPayButton() {
+        if (payClicked || blockingDialogVisible()) return;
+
+        const agreement = findAgreementCheckbox();
+        if (!agreement || !agreement.checked || !noBuyLooksSelected()) return;
+
+        const target = document.querySelector('#enable_pay.topaybtn, #enable_pay, .topaybtn')
+            || clickableTextCandidates('去支付')
+                .find((el) => normalize(el.innerText || el.value).includes('去支付'));
+        if (!target || !visible(target)) return;
+
+        payClicked = true;
+        if (DRY_RUN_PAY) {
+            target.setAttribute('data-order-helper-would-click-pay', 'true');
+            console.info('[购买填单助手] dry-run: would click 去支付');
+            return;
+        }
+
+        target.click();
+    }
+
     function run() {
         if (!pageLooksLikeOrderForm()) return;
         setAgreementChecked();
         clickNoBuyCard();
         clickDialogTemporaryNoBuy();
+        clickPayButton();
     }
 
     function startObserver() {
