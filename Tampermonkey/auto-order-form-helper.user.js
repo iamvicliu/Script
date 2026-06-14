@@ -6,6 +6,8 @@
 // @author       Codex
 // @match        https://trade.7881.com/trade-*.html*
 // @include      https://trade.7881.com/trade-*.html*
+// @updateURL    https://github.com/iamvicliu/Script/raw/refs/heads/main/Tampermonkey/auto-order-form-helper.user.js
+// @downloadURL  https://github.com/iamvicliu/Script/raw/refs/heads/main/Tampermonkey/auto-order-form-helper.user.js
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
