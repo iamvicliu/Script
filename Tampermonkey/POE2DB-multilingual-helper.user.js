@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2DB 多语言信息助手
 // @namespace    http://tampermonkey.net/
-// @version      3.4
-// @lastUpdated  2026-06-16 13:12:52 +08:00
+// @version      3.4.1
+// @lastUpdated  2026-06-16 15:26:19 +08:00
 // @description  POE2DB 多语言名称、三语搜索与复制助手
 // @author       维克牛
 // @contact      https://nga.178.com/nuke.php?func=ucp&uid=6888984
@@ -317,6 +317,18 @@
             text-align: center;
             color: #9f9686;
             font-size: 12px;
+        }
+        .poe-helper-content {
+            margin-top: 14px;
+        }
+        .poe-helper-content > .poe-helper-loading {
+            min-height: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            border: 1px solid rgba(154, 119, 70, 0.2);
+            background: rgba(28, 24, 18, 0.42);
         }
         .poe-helper-module {
             margin-top: 12px;
