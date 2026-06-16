@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2DB 多语言信息助手
 // @namespace    http://tampermonkey.net/
-// @version      3.3
-// @lastUpdated  2026-06-13 21:05:22 +08:00
+// @version      3.4
+// @lastUpdated  2026-06-16 13:12:52 +08:00
 // @description  POE2DB 多语言名称、三语搜索与复制助手
 // @author       维克牛
 // @contact      https://nga.178.com/nuke.php?func=ucp&uid=6888984
@@ -67,8 +67,9 @@
             position: fixed;
             top: 8px;
             right: 8px;
-            width: 320px;
+            width: 280px;
             max-height: calc(100vh - 24px);
+            box-sizing: border-box;
             overflow-y: auto;
             z-index: 10000;
             padding: 12px;
@@ -80,12 +81,16 @@
             box-shadow: 0 14px 34px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.04);
             backdrop-filter: blur(8px);
         }
+        .poe-helper-panel *,
+        .poe-helper-toggle {
+            box-sizing: border-box;
+        }
         .poe-helper-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             padding-bottom: 8px;
             border-bottom: 1px solid rgba(154, 119, 70, 0.32);
         }
@@ -122,9 +127,8 @@
         .poe-helper-search {
             position: relative;
             display: grid;
-            grid-template-columns: 1fr auto;
+            grid-template-columns: 1fr 52px;
             gap: 6px;
-            margin-bottom: 10px;
         }
         .poe-helper-input {
             padding: 7px 9px;
@@ -144,7 +148,7 @@
             font-size: 12px;
         }
         .poe-helper-search-btn {
-            padding: 0 12px;
+            padding: 0 8px;
             font-weight: 600;
         }
         .poe-helper-search-btn:hover,
@@ -158,7 +162,8 @@
             left: 0;
             right: 0;
             display: none;
-            max-height: min(520px, calc(100vh - 190px));
+            z-index: 1;
+            max-height: min(260px, calc(100vh - 190px));
             overflow-y: auto;
             border-radius: 4px;
             border: 1px solid rgba(154, 119, 70, 0.45);
@@ -169,7 +174,7 @@
             display: block;
         }
         .poe-helper-result {
-            padding: 8px 10px;
+            padding: 7px 9px;
             border-bottom: 1px solid rgba(154, 119, 70, 0.14);
             cursor: pointer;
         }
@@ -181,7 +186,7 @@
             align-items: center;
             justify-content: space-between;
             gap: 8px;
-            margin-bottom: 6px;
+            margin-bottom: 5px;
         }
         .poe-helper-result-name {
             min-width: 0;
@@ -207,8 +212,8 @@
         }
         .poe-helper-result-lang {
             display: grid;
-            grid-template-columns: 34px 1fr auto;
-            align-items: start;
+            grid-template-columns: 30px 1fr auto auto;
+            align-items: center;
             gap: 7px;
             padding: 3px 5px;
             border-radius: 4px;
@@ -223,7 +228,7 @@
         }
         .poe-helper-lang-badge {
             align-self: start;
-            padding: 1px 5px;
+            padding: 1px 4px;
             border-radius: 3px;
             border: 1px solid rgba(154, 119, 70, 0.4);
             background: rgba(55, 40, 24, 0.6);
@@ -250,6 +255,32 @@
             color: #d9c08a;
             opacity: 1;
             transform: translateX(1px);
+        }
+        .poe-helper-mini-btn {
+            min-width: 24px;
+            height: 20px;
+            padding: 0 5px;
+            border-radius: 3px;
+            border: 1px solid rgba(154, 119, 70, 0.42);
+            background: rgba(48, 36, 24, 0.62);
+            color: #d9c08a;
+            cursor: pointer;
+            font-size: 11px;
+            line-height: 18px;
+        }
+        .poe-helper-mini-btn:hover {
+            background: rgba(85, 62, 34, 0.9);
+            color: #ffe2a0;
+        }
+        .poe-helper-danger-btn {
+            border-color: transparent;
+            background: transparent;
+            color: #8f8574;
+        }
+        .poe-helper-danger-btn:hover {
+            border-color: rgba(151, 75, 55, 0.45);
+            background: rgba(58, 24, 18, 0.45);
+            color: #d99a84;
         }
         .poe-helper-lang-badge.cn {
             border-color: rgba(88, 142, 111, 0.45);
@@ -287,8 +318,25 @@
             color: #9f9686;
             font-size: 12px;
         }
+        .poe-helper-module {
+            margin-top: 12px;
+        }
+        .poe-helper-module:first-of-type {
+            margin-top: 0;
+        }
+        .poe-helper-module-title {
+            margin: 0 0 7px;
+            color: #d9c08a;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+        }
+        .poe-helper-module-body {
+            display: grid;
+            gap: 6px;
+        }
         .poe-helper-section {
-            margin-top: 6px;
+            margin-top: 0;
             padding: 8px 9px;
             border-radius: 4px;
             border: 1px solid rgba(154, 119, 70, 0.24);
@@ -332,14 +380,14 @@
             color: #9fd6b4;
         }
         .poe-helper-history {
-            margin-top: 8px;
+            margin-top: 10px;
         }
         .poe-helper-history-head {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 8px;
-            margin-bottom: 6px;
+            margin-bottom: 5px;
         }
         .poe-helper-history-clear {
             border: 0;
@@ -358,10 +406,10 @@
         }
         .poe-helper-history-row {
             display: grid;
-            grid-template-columns: auto 1fr auto;
-            align-items: start;
-            gap: 7px;
-            padding: 5px 6px;
+            grid-template-columns: auto 1fr auto auto;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 5px;
             border-radius: 4px;
             color: #d9d1bf;
             cursor: pointer;
@@ -377,19 +425,9 @@
             overflow-wrap: anywhere;
         }
         .poe-helper-history-delete {
-            width: 18px;
-            height: 18px;
-            border-radius: 3px;
-            border: 1px solid transparent;
-            background: transparent;
-            color: #8f8574;
-            cursor: pointer;
-            line-height: 1;
-        }
-        .poe-helper-history-delete:hover {
-            border-color: rgba(151, 75, 55, 0.45);
-            background: rgba(58, 24, 18, 0.45);
-            color: #d99a84;
+            width: 22px;
+            min-width: 22px;
+            padding: 0;
         }
         .poe-helper-toast {
             position: fixed;
@@ -423,8 +461,8 @@
             .poe-helper-panel {
                 top: 8px;
                 right: 8px;
-                left: 8px;
-                width: auto;
+                left: auto;
+                width: min(280px, calc(100vw - 16px));
                 max-height: calc(100vh - 20px);
             }
             .poe-helper-name-row {
@@ -491,7 +529,7 @@
             const parsed = JSON.parse(window.localStorage.getItem(RECENT_ITEMS_KEY) || '[]');
             return Array.isArray(parsed) ? parsed.slice(0, MAX_RECENT_ITEMS) : [];
         } catch (error) {
-            console.warn('POE2DB 助手读取最近打开失败', error);
+            console.warn('POE2DB 助手读取最近搜索打开失败', error);
             return [];
         }
     };
@@ -500,7 +538,7 @@
         try {
             window.localStorage.setItem(RECENT_ITEMS_KEY, JSON.stringify(items.slice(0, MAX_RECENT_ITEMS)));
         } catch (error) {
-            console.warn('POE2DB 助手保存最近打开失败', error);
+            console.warn('POE2DB 助手保存最近搜索打开失败', error);
         }
     };
 
@@ -793,6 +831,8 @@
         window.location.href = `https://poe2db.tw/${lang}/${entry.path}`;
     };
 
+    const getResultLabel = (result, lang) => result.labels?.[lang] || result.labels?.cn || result.labels?.tw || result.labels?.us || result.path;
+
     const renderSearchResults = (container, results, options = {}) => {
         container.innerHTML = '';
         if (!results.length) {
@@ -811,7 +851,7 @@
         for (const result of results) {
             const row = document.createElement('div');
             row.className = 'poe-helper-result';
-            const primaryLabel = result.labels.cn || result.labels.tw || result.labels.us || result.path;
+            const primaryLabel = getResultLabel(result, 'cn');
             const typeText = result.desc || '条目';
             const langRows = LANGS
                 .filter((lang) => result.labels[lang])
@@ -819,6 +859,7 @@
                     <div class="poe-helper-result-lang" data-lang="${lang}">
                         <span class="poe-helper-lang-badge ${lang}">${lang === 'us' ? 'EN' : lang === 'tw' ? '繁' : '简'}</span>
                         <span class="poe-helper-lang-text">${escapeHtml(result.labels[lang])}</span>
+                        ${options.allowCopy ? `<button class="poe-helper-mini-btn" data-action="copy-result" data-name="${escapeHtml(result.labels[lang])}" type="button">复制</button>` : ''}
                         <span class="poe-helper-open-mark">›</span>
                     </div>
                 `)
@@ -837,6 +878,12 @@
                     openSearchResult(result, langRow.dataset.lang);
                 });
             });
+            row.querySelectorAll('[data-action="copy-result"]').forEach((button) => {
+                button.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    copyText(button.dataset.name);
+                });
+            });
             container.appendChild(row);
         }
 
@@ -851,7 +898,7 @@
         if (!query) {
             const recent = getRecentItems();
             if (recent.length) {
-                renderSearchResults(resultsBox, recent, { title: '最近打开' });
+                renderSearchResults(resultsBox, recent, { title: '最近搜索打开', allowCopy: true });
             } else {
                 resultsBox.classList.remove('active');
                 resultsBox.innerHTML = '';
@@ -875,20 +922,21 @@
         if (!items.length) return '';
 
         return `
-            <div class="poe-helper-section poe-helper-history">
+            <div class="poe-helper-module poe-helper-history">
                 <div class="poe-helper-history-head">
-                    <div class="poe-helper-section-title">最近访问</div>
+                    <div class="poe-helper-module-title">最近访问</div>
                     <button class="poe-helper-history-clear" data-action="clear-visited" type="button">清空</button>
                 </div>
                 <div class="poe-helper-history-list">
                     ${items.map((item) => {
                         const lang = LANGS.includes(item.lastLang) ? item.lastLang : 'cn';
-                        const title = item.labels?.[lang] || item.labels?.cn || item.labels?.tw || item.labels?.us || item.path;
+                        const title = getResultLabel(item, lang);
                         return `
                             <div class="poe-helper-history-row" data-action="open-visited" data-path="${escapeHtml(item.path)}">
                                 <span class="poe-helper-lang-badge ${lang}">${lang === 'us' ? 'EN' : lang === 'tw' ? '繁' : '简'}</span>
                                 <span class="poe-helper-history-name">${escapeHtml(title)}</span>
-                                <button class="poe-helper-history-delete" data-action="delete-visited" data-path="${escapeHtml(item.path)}" type="button" title="删除">×</button>
+                                <button class="poe-helper-mini-btn" data-action="copy-visited" data-name="${escapeHtml(title)}" type="button">复制</button>
+                                <button class="poe-helper-mini-btn poe-helper-danger-btn poe-helper-history-delete" data-action="delete-visited" data-path="${escapeHtml(item.path)}" type="button" title="删除">×</button>
                             </div>
                         `;
                     }).join('')}
@@ -922,6 +970,13 @@
             });
         });
 
+        content.querySelectorAll('[data-action="copy-visited"]').forEach((button) => {
+            button.addEventListener('click', (event) => {
+                event.stopPropagation();
+                copyText(button.dataset.name);
+            });
+        });
+
         content.querySelector('[data-action="clear-visited"]')?.addEventListener('click', () => {
             saveVisitedPages([]);
             refreshVisitedPages(content);
@@ -933,7 +988,7 @@
         const labels = Object.fromEntries(LANGS.map((lang) => [lang, langInfoMap[lang]?.title || '']));
         const visitedItems = rememberVisitedPage({ path, lang: currentLang, labels });
 
-        content.innerHTML = LANGS.map((lang) => {
+        const langSections = LANGS.map((lang) => {
             const info = langInfoMap[lang] || { title: '加载失败' };
             const title = info.title || 'N/A';
             return `
@@ -948,7 +1003,15 @@
                     </div>
                 </div>
             `;
-        }).join('') + renderVisitedPages(visitedItems);
+        }).join('');
+
+        content.innerHTML = `
+            <div class="poe-helper-module">
+                <div class="poe-helper-module-title">多语言对照</div>
+                <div class="poe-helper-module-body">${langSections}</div>
+            </div>
+            ${renderVisitedPages(visitedItems)}
+        `;
 
         content.querySelectorAll('.poe-helper-btn').forEach((button) => {
             button.addEventListener('click', () => {
@@ -990,10 +1053,13 @@
                 <div class="poe-helper-title">POE2DB 助手</div>
                 <button class="poe-helper-close" title="关闭">×</button>
             </div>
-            <div class="poe-helper-search">
-                <input class="poe-helper-input" type="text" placeholder="输入中文或英文，搜索三种 POE2DB 语言...">
-                <button class="poe-helper-search-btn">搜索</button>
-                <div class="poe-helper-results"></div>
+            <div class="poe-helper-module">
+                <div class="poe-helper-module-title">搜索跳转</div>
+                <div class="poe-helper-search">
+                    <input class="poe-helper-input" type="text" placeholder="搜索中文或英文词条...">
+                    <button class="poe-helper-search-btn">搜索</button>
+                    <div class="poe-helper-results"></div>
+                </div>
             </div>
             <div class="poe-helper-content">
                 <div class="poe-helper-loading">正在加载多语言信息...</div>
@@ -1029,7 +1095,7 @@
             }
 
             const recent = getRecentItems();
-            if (recent.length) renderSearchResults(resultsBox, recent, { title: '最近打开' });
+            if (recent.length) renderSearchResults(resultsBox, recent, { title: '最近搜索打开', allowCopy: true });
         });
         searchInput.addEventListener('blur', () => {
             setTimeout(() => {
