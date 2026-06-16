@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2DB 多语言信息助手
 // @namespace    http://tampermonkey.net/
-// @version      3.4.1
-// @lastUpdated  2026-06-16 15:26:19 +08:00
+// @version      3.4.2
+// @lastUpdated  2026-06-16 20:41:28 +08:00
 // @description  POE2DB 多语言名称、三语搜索与复制助手
 // @author       维克牛
 // @contact      https://nga.178.com/nuke.php?func=ucp&uid=6888984
@@ -355,11 +355,24 @@
             background: rgba(28, 24, 18, 0.6);
         }
         .poe-helper-section-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
             margin-bottom: 4px;
             color: #d9c08a;
             font-size: 13px;
             font-weight: 700;
             line-height: 1.25;
+        }
+        .poe-helper-current-mark {
+            padding: 1px 5px;
+            border-radius: 999px;
+            border: 1px solid rgba(88, 142, 111, 0.42);
+            background: rgba(24, 63, 48, 0.42);
+            color: #9fd6b4;
+            font-size: 10px;
+            font-weight: 600;
+            line-height: 1.35;
         }
         .poe-helper-name-row {
             display: grid;
@@ -374,6 +387,25 @@
             line-height: 1.3;
             overflow-wrap: anywhere;
             word-break: normal;
+        }
+        .poe-helper-name-switch {
+            width: 100%;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            text-align: left;
+            cursor: pointer;
+            text-decoration: underline;
+            text-decoration-thickness: 1px;
+            text-underline-offset: 3px;
+            text-decoration-color: rgba(217, 192, 138, 0.45);
+        }
+        .poe-helper-name-switch:hover {
+            color: #ffe2a0;
+            text-decoration-color: rgba(255, 226, 160, 0.9);
+        }
+        .poe-helper-name-current {
+            cursor: default;
         }
         .poe-helper-actions {
             display: flex;
@@ -1003,11 +1035,18 @@
         const langSections = LANGS.map((lang) => {
             const info = langInfoMap[lang] || { title: '加载失败' };
             const title = info.title || 'N/A';
+            const isCurrent = lang === currentLang;
+            const nameHtml = isCurrent
+                ? `<div class="poe-helper-name poe-helper-name-current">${escapeHtml(title)}</div>`
+                : `<button class="poe-helper-name poe-helper-name-switch" data-action="switch-lang" data-lang="${lang}" data-path="${escapeHtml(path)}" type="button" title="切换到${LANG_NAMES[lang]}页面">${escapeHtml(title)}</button>`;
             return `
                 <div class="poe-helper-section">
-                    <div class="poe-helper-section-title">${LANG_NAMES[lang]}</div>
+                    <div class="poe-helper-section-title">
+                        <span>${LANG_NAMES[lang]}</span>
+                        ${isCurrent ? '<span class="poe-helper-current-mark">当前</span>' : ''}
+                    </div>
                     <div class="poe-helper-name-row">
-                        <div class="poe-helper-name">${escapeHtml(title)}</div>
+                        ${nameHtml}
                         <div class="poe-helper-actions">
                             <button class="poe-helper-btn" data-action="copy" data-name="${escapeHtml(title)}">复制</button>
                             <button class="poe-helper-btn poe-helper-buy" data-action="buy" data-name="${escapeHtml(title)}" data-lang="${lang}">购买</button>
@@ -1030,6 +1069,12 @@
                 const action = button.dataset.action;
                 if (action === 'copy') copyText(button.dataset.name);
                 if (action === 'buy') buyItem(button.dataset.name, button.dataset.lang);
+            });
+        });
+
+        content.querySelectorAll('[data-action="switch-lang"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                window.location.href = `https://poe2db.tw/${button.dataset.lang}/${button.dataset.path}`;
             });
         });
 
