@@ -1,21 +1,27 @@
 // ==UserScript==
 // @name         7881购买填单自动选择助手
 // @namespace    local.codex.order-form-helper
-// @version      0.2.0
-// @description  自动勾选买家购买协议、选择不购买安全服务、确认暂不购买提醒，并点击去支付。
+// @version      0.3.0
+// @description  自动勾选买家购买协议、选择不购买安全服务、确认暂不购买提醒，并按设置自动下单或支付。
 // @author       Codex
 // @match        https://trade.7881.com/trade-*.html*
+// @match        https://www.7881.com/payment/toPayout.action*
 // @include      https://trade.7881.com/trade-*.html*
+// @include      https://www.7881.com/payment/toPayout.action*
 // @updateURL    https://github.com/iamvicliu/Script/raw/refs/heads/main/Tampermonkey/auto-order-form-helper.user.js
 // @downloadURL  https://github.com/iamvicliu/Script/raw/refs/heads/main/Tampermonkey/auto-order-form-helper.user.js
 // @run-at       document-idle
-// @grant        none
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
 // ==/UserScript==
 
 (function () {
     'use strict';
 
     const AGREEMENT_KEY = 'codex_order_helper_agreement_signature_v1';
+    const AUTO_ORDER_KEY = 'codex_order_helper_auto_order_enabled_v1';
+    const AUTO_PAY_KEY = 'codex_order_helper_auto_pay_enabled_v1';
     const RUN_INTERVAL_MS = 600;
     const MAX_RUNS = 40;
     const DRY_RUN_PAY = Boolean(window.__ORDER_HELPER_DRY_RUN_PAY__);
@@ -24,9 +30,50 @@
     let noBuyClicked = false;
     let dialogNoBuyClicked = false;
     let payClicked = false;
+    let payoutClicked = false;
     let observerStarted = false;
 
     const normalize = (text) => (text || '').replace(/\s+/g, '').trim();
+    const gmGetValue = typeof GM_getValue === 'function' ? GM_getValue : null;
+    const gmSetValue = typeof GM_setValue === 'function' ? GM_setValue : null;
+    const gmRegisterMenuCommand = typeof GM_registerMenuCommand === 'function' ? GM_registerMenuCommand : null;
+
+    function getSetting(key, defaultValue) {
+        if (gmGetValue) {
+            const value = gmGetValue(key, defaultValue);
+            return typeof value === 'boolean' ? value : defaultValue;
+        }
+
+        const raw = localStorage.getItem(key);
+        return raw === null ? defaultValue : raw === 'true';
+    }
+
+    function setSetting(key, value) {
+        if (gmSetValue) {
+            gmSetValue(key, value);
+            return;
+        }
+
+        localStorage.setItem(key, String(value));
+    }
+
+    function toggleSetting(key, label, currentValue) {
+        const nextValue = !currentValue;
+        setSetting(key, nextValue);
+        console.info(`[购买填单助手] ${label}已${nextValue ? '开启' : '关闭'}，刷新页面后菜单文案会更新。`);
+    }
+
+    const autoOrderEnabled = getSetting(AUTO_ORDER_KEY, true);
+    const autoPayEnabled = getSetting(AUTO_PAY_KEY, false);
+
+    if (gmRegisterMenuCommand) {
+        gmRegisterMenuCommand(`${autoOrderEnabled ? '关闭' : '开启'}自动下单`, () => {
+            toggleSetting(AUTO_ORDER_KEY, '自动下单', autoOrderEnabled);
+        });
+        gmRegisterMenuCommand(`${autoPayEnabled ? '关闭' : '开启'}自动支付`, () => {
+            toggleSetting(AUTO_PAY_KEY, '自动支付', autoPayEnabled);
+        });
+    }
 
     function visible(el) {
         if (!el || !(el instanceof Element)) return false;
@@ -41,6 +88,13 @@
             && text.includes('填写下单信息')
             && text.includes('买家购买协议')
             && text.includes('安全服务');
+    }
+
+    function pageLooksLikePayout() {
+        const text = normalize(document.body && document.body.innerText);
+        return text.includes('收银台')
+            && text.includes('立即支付')
+            && text.includes('实付金额');
     }
 
     function dispatchInputEvents(el) {
@@ -188,6 +242,7 @@
 
     function clickPayButton() {
         if (payClicked || blockingDialogVisible()) return;
+        if (!autoOrderEnabled) return;
 
         const agreement = findAgreementCheckbox();
         if (!agreement || !agreement.checked || !noBuyLooksSelected()) return;
@@ -207,12 +262,37 @@
         target.click();
     }
 
-    function run() {
+    function clickFinalPayoutButton() {
+        if (payoutClicked) return;
+        if (!autoPayEnabled) return;
+        if (!pageLooksLikePayout()) return;
+
+        const target = document.querySelector('a.submita, .paysubmit .submita')
+            || clickableTextCandidates('立即支付')
+                .find((el) => normalize(el.innerText || el.value).includes('立即支付'));
+        if (!target || !visible(target)) return;
+
+        payoutClicked = true;
+        if (DRY_RUN_PAY) {
+            target.setAttribute('data-order-helper-would-click-final-pay', 'true');
+            console.info('[购买填单助手] dry-run: would click 立即支付');
+            return;
+        }
+
+        target.click();
+    }
+
+    function runOrderForm() {
         if (!pageLooksLikeOrderForm()) return;
         setAgreementChecked();
         clickNoBuyCard();
         clickDialogTemporaryNoBuy();
         clickPayButton();
+    }
+
+    function run() {
+        runOrderForm();
+        clickFinalPayoutButton();
     }
 
     function startObserver() {
