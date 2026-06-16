@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2DB 多语言信息助手
 // @namespace    http://tampermonkey.net/
-// @version      3.4.2
-// @lastUpdated  2026-06-16 20:41:28 +08:00
+// @version      3.4.3
+// @lastUpdated  2026-06-16 20:56:51 +08:00
 // @description  POE2DB 多语言名称、三语搜索与复制助手
 // @author       维克牛
 // @contact      https://nga.178.com/nuke.php?func=ucp&uid=6888984
@@ -955,7 +955,7 @@
 
         try {
             await loadAutocompleteData();
-            renderSearchResults(resultsBox, findSearchResults(query));
+            renderSearchResults(resultsBox, findSearchResults(query), { allowCopy: true });
         } catch (error) {
             console.error(error);
             resultsBox.innerHTML = '<div class="poe-helper-empty">搜索数据加载失败，正在等待下次输入重试</div>';
