@@ -2,12 +2,13 @@
 // @name         7881购买填单自动选择助手
 // @namespace    local.codex.order-form-helper
 // @version      0.3.0
+// @更新时间      2026-06-16 12:40:16
 // @description  自动勾选买家购买协议、选择不购买安全服务、确认暂不购买提醒，并按设置自动下单或支付。
 // @author       Codex
-// @match        https://trade.7881.com/trade-*.html*
-// @match        https://www.7881.com/payment/toPayout.action*
-// @include      https://trade.7881.com/trade-*.html*
-// @include      https://www.7881.com/payment/toPayout.action*
+// @match        https://*.7881.com/*
+// @match        https://7881.com/*
+// @include      https://*.7881.com/*
+// @include      https://7881.com/*
 // @updateURL    https://github.com/iamvicliu/Script/raw/refs/heads/main/Tampermonkey/auto-order-form-helper.user.js
 // @downloadURL  https://github.com/iamvicliu/Script/raw/refs/heads/main/Tampermonkey/auto-order-form-helper.user.js
 // @run-at       document-idle
