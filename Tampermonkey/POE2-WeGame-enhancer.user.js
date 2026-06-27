@@ -1,14 +1,18 @@
 // ==UserScript==
 // @name         POE2 WeGame增强
 // @namespace    local.codex.wegame.poe2
-// @version      0.1.1
-// @updated      2026-06-27 05:42:11
+// @version      0.1.8
+// @updated      2026-06-27 08:47:14
 // @description  在 WeGame 流放之路2 BD 分享页底部展示可复制的文字版技能信息
 // @author       维克牛
 // @license      MIT
 // @match        https://www.wegame.com.cn/helper/poe2/*
 // @run-at       document-idle
 // @grant        GM_setClipboard
+// @grant        GM_xmlhttpRequest
+// @grant        GM.xmlHttpRequest
+// @connect      poe2db.tw
+// @connect      cdn.poe2db.tw
 // ==/UserScript==
 
 (function () {
@@ -17,7 +21,9 @@
   const API_BASE = "https://www.wegame.com.cn/api/v1/wegame.pallas.poe2.Profile";
   const PANEL_ID = "codex-poe2-skill-text-panel";
   const STYLE_ID = "codex-poe2-skill-text-style";
-  const SCRIPT_UPDATED_AT = "2026-06-27 05:42:11";
+  const SCRIPT_UPDATED_AT = "2026-06-27 08:47:14";
+  const NAME_LANGS = ["cn", "tw", "us"];
+  const NAME_LANG_LABELS = { cn: "简体", tw: "繁体", us: "EN" };
 
   let lastShareCode = "";
   let lastText = "";
@@ -25,12 +31,155 @@
   let mountWatcherStarted = false;
   let currentFilter = "all";
   let currentSort = "original";
+  let currentNameLang = "cn";
+  let poe2dbNameMapsPromise = null;
+  let poe2dbNameMaps = null;
+  let nameLangState = "ready";
+  let nameLangMessage = "";
+  let panelEventGuardStarted = false;
+  let lastPanelScrollSnapshot = null;
 
   function cleanText(value) {
     return String(value ?? "")
       .replace(/\[([^|\]]+)\|([^\]]+)\]/g, "$2")
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  function normalizeNameKey(value) {
+    return cleanText(value)
+      .replace(/\s+/g, " ")
+      .replace(/[（）]/g, (char) => (char === "（" ? "(" : ")"))
+      .trim()
+      .toLowerCase();
+  }
+
+  function cleanPoe2dbLabel(value) {
+    return cleanText(value)
+      .replace(/<[^>]+>/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function requestText(url) {
+    const gmRequest = typeof GM_xmlhttpRequest === "function"
+      ? GM_xmlhttpRequest
+      : (typeof GM === "object" && typeof GM.xmlHttpRequest === "function" ? GM.xmlHttpRequest : null);
+    if (gmRequest) {
+      return new Promise((resolve, reject) => {
+        gmRequest({
+          method: "GET",
+          url,
+          onload: (response) => {
+            if (response.status >= 200 && response.status < 300) resolve(response.responseText);
+            else reject(new Error(`${url} HTTP ${response.status}`));
+          },
+          onerror: () => reject(new Error(`请求失败：${url}`)),
+        });
+      });
+    }
+    return fetch(url, { credentials: "omit" }).then((response) => {
+      if (!response.ok) throw new Error(`${url} HTTP ${response.status}`);
+      return response.text();
+    });
+  }
+
+  async function loadPoe2dbNameMaps() {
+    if (poe2dbNameMaps) return poe2dbNameMaps;
+    if (poe2dbNameMapsPromise) return poe2dbNameMapsPromise;
+
+    poe2dbNameMapsPromise = (async () => {
+      const html = await requestText("https://poe2db.tw/cn/");
+      const headerMatch = html.match(/https:\/\/cdn\.poe2db\.tw\/js\/poedb_header\.[a-f0-9]+\.js/);
+      if (!headerMatch) throw new Error("未找到 POE2DB header 脚本");
+
+      const headerJs = await requestText(headerMatch[0]);
+      const files = {};
+      for (const lang of NAME_LANGS) {
+        const match = headerJs.match(new RegExp(`autocompletecb_${lang}\\.[a-z0-9]+\\.json`, "i"));
+        if (match) files[lang] = `https://cdn.poe2db.tw/json/${match[0]}`;
+      }
+
+      const byValue = {};
+      const byCnName = new Map();
+      await Promise.all(NAME_LANGS.map(async (lang) => {
+        if (!files[lang]) return;
+        const list = JSON.parse(await requestText(files[lang]));
+        byValue[lang] = new Map();
+        for (const item of Array.isArray(list) ? list : []) {
+          const value = cleanText(item.value || "");
+          const label = cleanPoe2dbLabel(item.label || "");
+          if (!value || !label) continue;
+          byValue[lang].set(value, label);
+          if (lang === "cn") {
+            byCnName.set(label, value);
+            byCnName.set(normalizeNameKey(label), value);
+          }
+        }
+      }));
+
+      poe2dbNameMaps = { byValue, byCnName };
+      return poe2dbNameMaps;
+    })();
+
+    return poe2dbNameMapsPromise;
+  }
+
+  function localizedName(name) {
+    const cleanName = cleanText(name);
+    if (!cleanName || currentNameLang === "cn" || !poe2dbNameMaps) return cleanName;
+    const value = poe2dbNameMaps.byCnName.get(cleanName) || poe2dbNameMaps.byCnName.get(normalizeNameKey(cleanName));
+    if (!value) return cleanName;
+    return poe2dbNameMaps.byValue[currentNameLang]?.get(value) || cleanName;
+  }
+
+  async function ensureNameLanguageLoaded() {
+    if (currentNameLang === "cn" || poe2dbNameMaps) {
+      nameLangState = "ready";
+      nameLangMessage = "";
+      updateRenderedLanguage();
+      return true;
+    }
+    nameLangState = "loading";
+    nameLangMessage = `${NAME_LANG_LABELS[currentNameLang]} 名称加载中`;
+    updateRenderedLanguage();
+    try {
+      await loadPoe2dbNameMaps();
+      nameLangState = "ready";
+      nameLangMessage = "";
+      updateRenderedLanguage();
+      return true;
+    } catch (error) {
+      nameLangState = "error";
+      nameLangMessage = "POE2DB 名称加载失败";
+      console.warn("POE2DB 技能名称加载失败", error);
+      updateRenderedLanguage();
+      return false;
+    }
+  }
+
+  function localizedSupportText(support) {
+    const name = localizedName(support.name || "-");
+    const suffix = [
+      support.level && support.level !== "-" ? `Lv${support.level}` : "",
+      support.quality && support.quality !== "-" ? `Q${support.quality}` : "",
+    ].filter(Boolean).join(" ");
+    return suffix ? `${name}(${suffix})` : name;
+  }
+
+  function localizedRowText(row, index) {
+    const lines = [];
+    lines.push(`${index + 1}. ${localizedName(row.name)} | Lv${row.level} | Q${row.quality} | ${row.sockets || "-"}孔`);
+    lines.push(`   类型: ${row.skillType || "-"}`);
+    if (row.tags) lines.push(`   标签: ${row.tags}`);
+    lines.push(`   辅助: ${row.supports?.length ? row.supports.map(localizedSupportText).join(" / ") : "-"}`);
+    if (row.nestedActives?.length) lines.push(`   嵌套主动: ${row.nestedActives.join(" / ")}`);
+    return lines.join("\n");
+  }
+
+  function currentCopyText() {
+    if (!lastRows.length || currentNameLang === "cn") return lastText;
+    return lastRows.map((row, index) => localizedRowText(row, index)).join("\n\n");
   }
 
   function extractShareCode() {
@@ -232,11 +381,20 @@
         margin: 18px 0 0;
         padding: 0 !important;
         overflow: visible !important;
+        overflow-anchor: none;
         background: transparent !important;
         color: #c8d2dc;
         font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
         -webkit-user-select: text !important;
         user-select: text !important;
+      }
+      html,
+      body,
+      .share-page,
+      .bd-content,
+      .bd-content-inner,
+      .skill-panel {
+        overflow-anchor: none !important;
       }
       #${PANEL_ID} *,
       #${PANEL_ID} .codex-skill-body,
@@ -282,6 +440,7 @@
         color: rgba(169, 157, 125, 0.72);
         font-size: 12px;
         font-weight: 400;
+        white-space: nowrap;
       }
       #${PANEL_ID} .codex-skill-actions {
         display: flex;
@@ -305,6 +464,10 @@
         border-color: currentColor;
         color: #f0d99a;
         background: rgba(150, 127, 82, 0.18);
+      }
+      #${PANEL_ID} button:disabled {
+        cursor: default;
+        opacity: 0.58;
       }
       #${PANEL_ID} .codex-skill-controls {
         display: grid;
@@ -332,6 +495,9 @@
       }
       #${PANEL_ID} .codex-control-group.codex-sort-group {
         justify-content: flex-end;
+      }
+      #${PANEL_ID} .codex-control-group.codex-lang-group {
+        grid-column: 1 / -1;
       }
       #${PANEL_ID} .codex-control-label {
         color: #8f846a;
@@ -662,6 +828,117 @@
     return sortedRows(filterRows(rows));
   }
 
+  function scrollSnapshot() {
+    const elements = [document.scrollingElement, document.documentElement, document.body, ...document.querySelectorAll("*")]
+      .filter((element, index, list) => element && list.indexOf(element) === index)
+      .filter((element) => element.scrollTop || element.scrollLeft || element.scrollHeight > element.clientHeight + 2 || element.scrollWidth > element.clientWidth + 2)
+      .map((element) => ({ element, top: element.scrollTop, left: element.scrollLeft }));
+    return { x: window.scrollX, y: window.scrollY, elements };
+  }
+
+  function restoreScrollPosition(snapshot) {
+    window.scrollTo(snapshot.x, snapshot.y);
+    for (const item of snapshot.elements) {
+      if (!item.element?.isConnected && item.element !== document.body && item.element !== document.documentElement) continue;
+      item.element.scrollTop = item.top;
+      item.element.scrollLeft = item.left;
+    }
+  }
+
+  function restoreScrollRepeatedly(snapshot) {
+    restoreScrollPosition(snapshot);
+    requestAnimationFrame(() => restoreScrollPosition(snapshot));
+    setTimeout(() => restoreScrollPosition(snapshot), 0);
+    setTimeout(() => restoreScrollPosition(snapshot), 80);
+    setTimeout(() => restoreScrollPosition(snapshot), 240);
+    setTimeout(() => restoreScrollPosition(snapshot), 600);
+    setTimeout(() => restoreScrollPosition(snapshot), 1200);
+    const startedAt = Date.now();
+    const lock = setInterval(() => {
+      restoreScrollPosition(snapshot);
+      if (Date.now() - startedAt > 1200) clearInterval(lock);
+    }, 50);
+  }
+
+  async function preserveScroll(callback) {
+    const snapshot = lastPanelScrollSnapshot || scrollSnapshot();
+    try {
+      return await callback();
+    } finally {
+      restoreScrollRepeatedly(snapshot);
+      lastPanelScrollSnapshot = null;
+    }
+  }
+
+  function panelButtonFromEvent(event) {
+    return event.target?.closest?.(`#${PANEL_ID} button`) || null;
+  }
+
+  function stopPanelPointerEvent(event) {
+    if (!panelButtonFromEvent(event)) return;
+    lastPanelScrollSnapshot = scrollSnapshot();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    if (event.type === "pointerdown" || event.type === "mousedown") {
+      event.preventDefault();
+    }
+  }
+
+  async function handlePanelButton(button) {
+    const panel = document.getElementById(PANEL_ID);
+    if (button.dataset.nameLang) {
+      currentNameLang = button.dataset.nameLang;
+      button.blur();
+      await preserveScroll(async () => {
+        await ensureNameLanguageLoaded();
+        updateRenderedLanguage(panel);
+      });
+      return;
+    }
+    if (button.dataset.filter) {
+      currentFilter = button.dataset.filter;
+      button.blur();
+      await preserveScroll(() => renderRowsIntoPanel(panel));
+      return;
+    }
+    if (button.dataset.sort) {
+      currentSort = button.dataset.sort;
+      button.blur();
+      await preserveScroll(() => renderRowsIntoPanel(panel));
+      return;
+    }
+    if (button.dataset.action === "refresh") {
+      button.blur();
+      await preserveScroll(() => refresh());
+      return;
+    }
+    if (button.dataset.action === "copy") {
+      const value = currentCopyText();
+      const ok = await copyText(value);
+      button.textContent = ok ? "已复制" : "复制失败";
+      setTimeout(() => {
+        button.textContent = "复制";
+      }, 1200);
+    }
+  }
+
+  function startPanelEventGuard() {
+    if (panelEventGuardStarted) return;
+    panelEventGuardStarted = true;
+    ["pointerdown", "mousedown", "mouseup"].forEach((type) => {
+      window.addEventListener(type, stopPanelPointerEvent, true);
+    });
+    window.addEventListener("click", (event) => {
+      const button = panelButtonFromEvent(event);
+      if (!button) return;
+      lastPanelScrollSnapshot = lastPanelScrollSnapshot || scrollSnapshot();
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      handlePanelButton(button);
+    }, true);
+  }
+
   function updateControls(panel, rows, shownRows) {
     const summary = summarizeRows(rows);
     const summaryEl = panel.querySelector(".codex-skill-summary");
@@ -674,6 +951,32 @@
     panel.querySelectorAll("[data-sort]").forEach((button) => {
       button.classList.toggle("codex-active-control", button.dataset.sort === currentSort);
     });
+    panel.querySelectorAll("[data-name-lang]").forEach((button) => {
+      button.classList.toggle("codex-active-control", button.dataset.nameLang === currentNameLang);
+      button.disabled = nameLangState === "loading";
+      const baseLabel = NAME_LANG_LABELS[button.dataset.nameLang] || button.textContent;
+      button.textContent = nameLangState === "loading" && button.dataset.nameLang === currentNameLang
+        ? `${baseLabel}...`
+        : baseLabel;
+    });
+    const title = panel.querySelector(".codex-skill-title");
+    if (title) title.title = nameLangMessage || "";
+  }
+
+  function updateRenderedLanguage(panel = document.getElementById(PANEL_ID)) {
+    if (!panel) return;
+    const rowsByIndex = new Map(lastRows.map((row) => [String(row.originalIndex), row]));
+    panel.querySelectorAll(".codex-skill-card[data-row-index]").forEach((card) => {
+      const row = rowsByIndex.get(card.dataset.rowIndex);
+      if (!row) return;
+      const nameEl = card.querySelector(".codex-skill-name");
+      if (nameEl) nameEl.textContent = localizedName(row.name);
+      card.querySelectorAll(".codex-support-table tbody tr").forEach((tr, supportIndex) => {
+        const supportNameEl = tr.querySelector(".codex-support-name");
+        if (supportNameEl) supportNameEl.textContent = localizedName(row.supports?.[supportIndex]?.name || "-");
+      });
+    });
+    updateControls(panel, lastRows, visibleRows(lastRows));
   }
 
   function startMountWatcher() {
@@ -688,76 +991,10 @@
     }, 1500);
   }
 
-  function renderPanel(result, status) {
-    ensureStyle();
-    if (typeof result === "string") {
-      lastText = result || "";
-      lastRows = [];
-    } else {
-      lastText = result?.text || "";
-      lastRows = result?.rows || [];
-    }
 
-    let panel = document.getElementById(PANEL_ID);
-    if (!panel) {
-      panel = document.createElement("div");
-      panel.id = PANEL_ID;
-      panel.innerHTML = `
-        <div class="codex-skill-header">
-          <div class="codex-skill-title">技能文字信息 <span class="codex-skill-updated">${SCRIPT_UPDATED_AT}</span></div>
-          <div class="codex-skill-actions">
-            <button type="button" data-action="refresh">刷新</button>
-            <button type="button" data-action="copy">复制</button>
-          </div>
-        </div>
-        <div class="codex-skill-controls">
-          <div class="codex-skill-summary"></div>
-          <div class="codex-control-group">
-            <span class="codex-control-label">筛选</span>
-            <button type="button" data-filter="all">全部</button>
-            <button type="button" data-filter="active">主动</button>
-            <button type="button" data-filter="spirit">精魂</button>
-            <button type="button" data-filter="linked">有辅助</button>
-            <button type="button" data-filter="empty">无辅助</button>
-          </div>
-          <div class="codex-control-group codex-sort-group">
-            <span class="codex-control-label">排序</span>
-            <button type="button" data-sort="original">原序</button>
-            <button type="button" data-sort="type">类型</button>
-          </div>
-        </div>
-        <div class="codex-skill-body"></div>
-        <div class="codex-skill-status"></div>
-      `;
-      panel.addEventListener("click", async (event) => {
-        const button = event.target.closest("button");
-        if (!button) return;
-        if (button.dataset.filter) {
-          currentFilter = button.dataset.filter;
-          renderPanel({ text: lastText, rows: lastRows }, "");
-          return;
-        }
-        if (button.dataset.sort) {
-          currentSort = button.dataset.sort;
-          renderPanel({ text: lastText, rows: lastRows }, "");
-          return;
-        }
-        if (button.dataset.action === "refresh") {
-          refresh();
-        }
-        if (button.dataset.action === "copy") {
-          const value = lastText;
-          const ok = await copyText(value);
-          button.textContent = ok ? "已复制" : "复制失败";
-          setTimeout(() => {
-            button.textContent = "复制";
-          }, 1200);
-        }
-      });
-    }
-    mountPanel(panel);
-
+  function renderRowsIntoPanel(panel) {
     const body = panel.querySelector(".codex-skill-body");
+    if (!body) return;
     body.innerHTML = "";
     const rowsToRender = visibleRows(lastRows);
     updateControls(panel, lastRows, rowsToRender);
@@ -771,6 +1008,7 @@
       for (const row of rowsToRender) {
         const card = document.createElement("div");
         card.className = `codex-skill-card ${row.skillTypeClass || ""}`.trim();
+        card.dataset.rowIndex = String(row.originalIndex);
         card.innerHTML = `
           <div class="codex-skill-top">
             <div class="codex-skill-name-row">
@@ -786,7 +1024,7 @@
         const typeBadge = card.querySelector(".codex-skill-type");
         typeBadge.textContent = row.skillType || "主动技能";
         if (row.skillTypeClass) typeBadge.classList.add(row.skillTypeClass);
-        card.querySelector(".codex-skill-name").textContent = row.name;
+        card.querySelector(".codex-skill-name").textContent = localizedName(row.name);
         card.querySelector(".codex-skill-meta").textContent = `Lv${row.level} / Q${row.quality} / ${row.sockets}孔`;
         const tags = card.querySelector(".codex-skill-tags");
         tags.innerHTML = `<span class="codex-skill-label">标签</span>${row.tags || "-"}`;
@@ -813,7 +1051,8 @@
             indexTd.className = "codex-support-index";
             indexTd.textContent = String(supportIndex + 1);
             const nameTd = document.createElement("td");
-            nameTd.textContent = support.name || "-";
+            nameTd.className = "codex-support-name";
+            nameTd.textContent = localizedName(support.name || "-");
             const levelTd = document.createElement("td");
             levelTd.className = "codex-support-level";
             levelTd.textContent = support.level && support.level !== "-" ? `Lv${support.level}` : "-";
@@ -843,6 +1082,69 @@
       body.appendChild(card);
     }
     panel.querySelector(".codex-skill-status").textContent = "";
+  }  function renderPanel(result, status) {
+    ensureStyle();
+    if (typeof result === "string") {
+      lastText = result || "";
+      lastRows = [];
+    } else {
+      lastText = result?.text || "";
+      lastRows = result?.rows || [];
+    }
+
+    let panel = document.getElementById(PANEL_ID);
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.id = PANEL_ID;
+      panel.innerHTML = `
+        <div class="codex-skill-header">
+          <div class="codex-skill-title">技能文字信息 <span class="codex-skill-updated">脚本更新：${SCRIPT_UPDATED_AT}</span></div>
+          <div class="codex-skill-actions">
+            <button type="button" data-action="refresh">刷新</button>
+            <button type="button" data-action="copy">复制</button>
+          </div>
+        </div>
+        <div class="codex-skill-controls">
+          <div class="codex-skill-summary"></div>
+          <div class="codex-control-group codex-lang-group">
+            <span class="codex-control-label">语言</span>
+            <button type="button" data-name-lang="cn">简体</button>
+            <button type="button" data-name-lang="tw">繁体</button>
+            <button type="button" data-name-lang="us">EN</button>
+          </div>
+          <div class="codex-control-group">
+            <span class="codex-control-label">筛选</span>
+            <button type="button" data-filter="all">全部</button>
+            <button type="button" data-filter="active">主动</button>
+            <button type="button" data-filter="spirit">精魂</button>
+            <button type="button" data-filter="linked">有辅助</button>
+            <button type="button" data-filter="empty">无辅助</button>
+          </div>
+          <div class="codex-control-group codex-sort-group">
+            <span class="codex-control-label">排序</span>
+            <button type="button" data-sort="original">原序</button>
+            <button type="button" data-sort="type">类型</button>
+          </div>
+        </div>
+        <div class="codex-skill-body"></div>
+        <div class="codex-skill-status"></div>
+      `;
+      startPanelEventGuard();
+      ["pointerdown", "mousedown", "mouseup"].forEach((type) => {
+        panel.addEventListener(type, stopPanelPointerEvent, true);
+      });
+      panel.addEventListener("click", async (event) => {
+        const button = event.target.closest("button");
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        await handlePanelButton(button);
+      });
+    }
+    mountPanel(panel);
+
+    renderRowsIntoPanel(panel);
     requestAnimationFrame(() => expandSkillHost(panel));
   }
 
