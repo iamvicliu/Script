@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2 WeGame增强
 // @namespace    local.codex.wegame.poe2
-// @version      0.1.8
-// @updated      2026-06-27 08:47:14
+// @version      0.1.10
+// @updated      2026-06-27 09:12:40
 // @description  在 WeGame 流放之路2 BD 分享页底部展示可复制的文字版技能信息
 // @author       维克牛
 // @license      MIT
@@ -21,7 +21,7 @@
   const API_BASE = "https://www.wegame.com.cn/api/v1/wegame.pallas.poe2.Profile";
   const PANEL_ID = "codex-poe2-skill-text-panel";
   const STYLE_ID = "codex-poe2-skill-text-style";
-  const SCRIPT_UPDATED_AT = "2026-06-27 08:47:14";
+  const SCRIPT_UPDATED_AT = "2026-06-27 09:12:40";
   const NAME_LANGS = ["cn", "tw", "us"];
   const NAME_LANG_LABELS = { cn: "简体", tw: "繁体", us: "EN" };
 
@@ -61,6 +61,12 @@
       .trim();
   }
 
+  function simplifiedToTraditionalFallback(value) {
+    const map = {
+      "战":"戰","飞":"飛","级":"級","灵":"靈","体":"體","击":"擊","发":"發","触":"觸","电":"電","冰":"冰","霜":"霜","净":"淨","化":"化","虚":"虛","空":"空","冲":"衝","击":"擊","践":"踐","踏":"踏","守":"守","护":"護","野":"野","性":"性","报":"報","复":"復","从":"從","军":"軍","扩":"擴","范":"範","围":"圍","过":"過","载":"載","以":"以","己":"己","度":"度","人":"人","罗":"羅","米":"米","拉":"拉","阿":"阿","曼":"曼","娜":"娜","奉":"奉","纳":"納","持":"持","久":"久","地":"地","面":"面","狙":"狙","印":"印","记":"記","正":"正","义":"義","天":"天","降":"降","火":"火","焰":"焰","惧":"懼","赠":"贈","猎":"獵","鹿":"鹿","寒":"寒","捷":"捷","弹":"彈","幕":"幕","回":"迴","旋":"旋","斩":"斬","能":"能","量":"量","球":"球","增":"增","益":"益","效":"效","区":"區","域":"域","间":"間","间":"間","鱼":"魚","鸟":"鳥","龙":"龍","风":"風","云":"雲","会":"會","转":"轉","伤":"傷","害":"害","强":"強","袭":"襲","双":"雙","释":"釋","放":"放","压":"壓","制":"制","绝":"絕","对":"對","应":"應","导":"導","弹":"彈","连":"連","锁":"鎖","链":"鏈","击":"擊","扫":"掃","荡":"盪","圣":"聖","锤":"錘","锻":"鍛","炼":"煉","术":"術","师":"師","药":"藥","剂":"劑","药":"藥","药":"藥","药":"藥","药":"藥","药":"藥" };
+    return cleanText(value).replace(/[\u4e00-\u9fff]/g, (char) => map[char] || char);
+  }
+
   function requestText(url) {
     const gmRequest = typeof GM_xmlhttpRequest === "function"
       ? GM_xmlhttpRequest
@@ -70,6 +76,10 @@
         gmRequest({
           method: "GET",
           url,
+          headers: {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://poe2db.tw/cn/",
+          },
           onload: (response) => {
             if (response.status >= 200 && response.status < 300) resolve(response.responseText);
             else reject(new Error(`${url} HTTP ${response.status}`));
@@ -84,9 +94,10 @@
     });
   }
 
-  async function loadPoe2dbNameMaps() {
-    if (poe2dbNameMaps) return poe2dbNameMaps;
-    if (poe2dbNameMapsPromise) return poe2dbNameMapsPromise;
+  async function loadPoe2dbNameMaps(force = false) {
+    if (!force && poe2dbNameMaps) return poe2dbNameMaps;
+    if (!force && poe2dbNameMapsPromise) return poe2dbNameMapsPromise;
+    if (force) poe2dbNameMapsPromise = null;
 
     poe2dbNameMapsPromise = (async () => {
       const html = await requestText("https://poe2db.tw/cn/");
@@ -100,21 +111,25 @@
         if (match) files[lang] = `https://cdn.poe2db.tw/json/${match[0]}`;
       }
 
-      const byValue = {};
-      const byCnName = new Map();
-      await Promise.all(NAME_LANGS.map(async (lang) => {
+      const byValue = { ...(poe2dbNameMaps?.byValue || {}) };
+      const byCnName = new Map(poe2dbNameMaps?.byCnName || []);
+      await Promise.allSettled(NAME_LANGS.map(async (lang) => {
         if (!files[lang]) return;
-        const list = JSON.parse(await requestText(files[lang]));
-        byValue[lang] = new Map();
-        for (const item of Array.isArray(list) ? list : []) {
-          const value = cleanText(item.value || "");
-          const label = cleanPoe2dbLabel(item.label || "");
-          if (!value || !label) continue;
-          byValue[lang].set(value, label);
-          if (lang === "cn") {
-            byCnName.set(label, value);
-            byCnName.set(normalizeNameKey(label), value);
+        try {
+          const list = JSON.parse(await requestText(files[lang]));
+          byValue[lang] = new Map();
+          for (const item of Array.isArray(list) ? list : []) {
+            const value = cleanText(item.value || "");
+            const label = cleanPoe2dbLabel(item.label || "");
+            if (!value || !label) continue;
+            byValue[lang].set(value, label);
+            if (lang === "cn") {
+              byCnName.set(label, value);
+              byCnName.set(normalizeNameKey(label), value);
+            }
           }
+        } catch (error) {
+          console.warn(`POE2DB ${lang} 名称数据加载失败`, error);
         }
       }));
 
@@ -129,12 +144,18 @@
     const cleanName = cleanText(name);
     if (!cleanName || currentNameLang === "cn" || !poe2dbNameMaps) return cleanName;
     const value = poe2dbNameMaps.byCnName.get(cleanName) || poe2dbNameMaps.byCnName.get(normalizeNameKey(cleanName));
-    if (!value) return cleanName;
-    return poe2dbNameMaps.byValue[currentNameLang]?.get(value) || cleanName;
+    if (!value) return currentNameLang === "tw" ? simplifiedToTraditionalFallback(cleanName) : cleanName;
+    return poe2dbNameMaps.byValue[currentNameLang]?.get(value) || (currentNameLang === "tw" ? simplifiedToTraditionalFallback(cleanName) : cleanName);
   }
 
   async function ensureNameLanguageLoaded() {
-    if (currentNameLang === "cn" || poe2dbNameMaps) {
+    if (currentNameLang === "cn") {
+      nameLangState = "ready";
+      nameLangMessage = "";
+      updateRenderedLanguage();
+      return true;
+    }
+    if (poe2dbNameMaps?.byValue?.[currentNameLang]) {
       nameLangState = "ready";
       nameLangMessage = "";
       updateRenderedLanguage();
@@ -144,7 +165,7 @@
     nameLangMessage = `${NAME_LANG_LABELS[currentNameLang]} 名称加载中`;
     updateRenderedLanguage();
     try {
-      await loadPoe2dbNameMaps();
+      await loadPoe2dbNameMaps(Boolean(poe2dbNameMaps));
       nameLangState = "ready";
       nameLangMessage = "";
       updateRenderedLanguage();
