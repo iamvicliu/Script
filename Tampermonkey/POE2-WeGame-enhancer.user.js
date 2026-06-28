@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2 WeGame增强
 // @namespace    local.codex.wegame.poe2
-// @version      0.1.10
-// @updated      2026-06-27 09:12:40
+// @version      0.1.17
+// @updated      2026-06-28 13:23:32
 // @description  在 WeGame 流放之路2 BD 分享页底部展示可复制的文字版技能信息
 // @author       维克牛
 // @license      MIT
@@ -21,7 +21,7 @@
   const API_BASE = "https://www.wegame.com.cn/api/v1/wegame.pallas.poe2.Profile";
   const PANEL_ID = "codex-poe2-skill-text-panel";
   const STYLE_ID = "codex-poe2-skill-text-style";
-  const SCRIPT_UPDATED_AT = "2026-06-27 09:12:40";
+  const SCRIPT_UPDATED_AT = "2026-06-28 13:23:32";
   const NAME_LANGS = ["cn", "tw", "us"];
   const NAME_LANG_LABELS = { cn: "简体", tw: "繁体", us: "EN" };
 
@@ -183,18 +183,22 @@
     const name = localizedName(support.name || "-");
     const suffix = [
       support.level && support.level !== "-" ? `Lv${support.level}` : "",
-      support.quality && support.quality !== "-" ? `Q${support.quality}` : "",
+      support.quality && support.quality !== "-" ? support.quality : "",
     ].filter(Boolean).join(" ");
     return suffix ? `${name}(${suffix})` : name;
   }
 
   function localizedRowText(row, index) {
     const lines = [];
-    lines.push(`${index + 1}. ${localizedName(row.name)} | Lv${row.level} | Q${row.quality} | ${row.sockets || "-"}孔`);
+    lines.push(`${index + 1}. ${localizedName(row.name)} | Lv${row.level} | ${row.quality} | ${row.sockets || "-"}孔`);
     lines.push(`   类型: ${row.skillType || "-"}`);
     if (row.tags) lines.push(`   标签: ${row.tags}`);
-    lines.push(`   辅助: ${row.supports?.length ? row.supports.map(localizedSupportText).join(" / ") : "-"}`);
-    if (row.nestedActives?.length) lines.push(`   嵌套主动: ${row.nestedActives.join(" / ")}`);
+    if (row.requirements) lines.push(`   需求: ${row.requirements}`);
+    const tableRows = [
+      ...(row.supports || []).map((support) => ({ ...support, rowType: support.rowType || "被动" })),
+      ...(row.nestedActives || []).map((active) => ({ ...active, rowType: active.rowType || "主动" })),
+    ];
+    lines.push(`   已插入技能: ${tableRows.length ? tableRows.map((item) => `${item.rowType}:${localizedSupportText(item)}`).join(" / ") : "-"}`);
     return lines.join("\n");
   }
 
@@ -251,14 +255,39 @@
     return "";
   }
 
+  function fieldValueText(field) {
+    if (typeof field === "string") return cleanText(field);
+    const values = field?.values;
+    if (Array.isArray(values)) {
+      const parts = values
+        .map((value) => Array.isArray(value) ? value[0] : value)
+        .map((value) => cleanText(value))
+        .filter(Boolean);
+      if (parts.length) return parts.join(" ");
+    }
+    return cleanText(field?.value ?? field?.displayValue ?? field?.text ?? "");
+  }
+
+  function formatRequirements(item) {
+    const requirements = Array.isArray(item?.requirements) ? item.requirements : [];
+    const parts = requirements.map((requirement) => {
+      if (typeof requirement === "string") return cleanText(requirement);
+      const name = cleanText(requirement?.name || requirement?.type || requirement?.id || "");
+      const value = fieldValueText(requirement);
+      if (name && value) return `${name} ${value}`;
+      return name || value;
+    }).filter(Boolean);
+    return parts.join(" / ");
+  }
+
   function gemName(item) {
     return cleanText(item?.typeLine || item?.baseType || item?.name || "");
   }
 
   function formatQuality(value) {
-    const text = cleanText(value).replace(/^Q/i, "").replace(/^\+/, "").replace(/%$/, "");
-    if (!text || text === "-") return "+ 0%";
-    return `+ ${text}%`;
+    const text = cleanText(value).replace(/^Q/i, "").replace(/^\+/, "").replace(/%$/, "").trim();
+    if (!text || text === "-") return "品质0%";
+    return `品质${text}%`;
   }
 
   function formatLevel(value) {
@@ -274,13 +303,29 @@
     return Boolean(item?.support) || item?.frameTypeId === "SupportGem";
   }
 
+  function hasExplicitSpiritCost(skill) {
+    const fields = [
+      ...(skill?.properties || []),
+      ...(skill?.requirements || []),
+      ...(skill?.explicitMods || []),
+      ...(skill?.implicitMods || []),
+    ];
+    return fields.some((field) => {
+      const text = cleanText(typeof field === "string" ? field : `${field?.name || ""} ${JSON.stringify(field?.values || "")}`);
+      return /(精魂|Spirit).{0,16}(消耗|保留|reservation|reserve|cost)|(?:消耗|保留|reservation|reserve|cost).{0,16}(精魂|Spirit)/i.test(text);
+    });
+  }
+
   function skillType(skill, tags) {
     const inventoryId = cleanText(skill?.inventoryId || "");
     if (inventoryId && !["SkillSlots", "AscendancySkills"].includes(inventoryId)) {
       return { label: "装备赋予", className: "codex-type-granted" };
     }
-    if (/\b(Persistent|Aura|Herald)\b|永久性|光环|捷/.test(tags)) {
+    if (hasExplicitSpiritCost(skill)) {
       return { label: "精魂技能", className: "codex-type-spirit" };
+    }
+    if (/\b(Persistent|Aura|Herald)\b|永久性|光环|捷/.test(tags)) {
+      return { label: "被动技能", className: "codex-type-passive" };
     }
     return { label: "主动技能", className: "codex-type-active" };
   }
@@ -291,6 +336,7 @@
     const quality = propValue(skill, ["品质"]) || "-";
     const sockets = Array.isArray(skill.gemSockets) ? skill.gemSockets.length : "";
     const tags = cleanText(skill.properties?.[0]?.name || "");
+    const requirements = formatRequirements(skill);
     const type = skillType(skill, tags);
 
     const supports = [];
@@ -303,31 +349,41 @@
         const childQuality = propValue(child, ["品质"]);
         const suffix = [
           childLevel ? `Lv${formatLevel(childLevel)}` : "",
-          childQuality && childQuality !== "-" ? `Q${formatQuality(childQuality)}` : "",
+          childQuality && childQuality !== "-" ? formatQuality(childQuality) : "",
         ].filter(Boolean).join(" ");
         supports.push({
           name: childName,
+          rowType: "被动",
           level: childLevel ? formatLevel(childLevel) : "-",
-          quality: childQuality && childQuality !== "-" ? formatQuality(childQuality) : "+ 0%",
+          quality: childQuality && childQuality !== "-" ? formatQuality(childQuality) : "-",
           text: suffix ? `${childName}(${suffix})` : childName,
         });
       } else {
         const childLevel = propValue(child, ["等级"]);
         const childQuality = propValue(child, ["品质"]);
         const childSockets = Array.isArray(child.gemSockets) ? child.gemSockets.length : "";
-        nestedActives.push(
-          `${childName}${childLevel ? ` Lv${formatLevel(childLevel)}` : ""}${childQuality ? ` Q${formatQuality(childQuality)}` : ""}${childSockets ? ` ${childSockets}孔` : ""}`
-        );
+        const childRequirements = formatRequirements(child);
+        const childRow = {
+          name: childName,
+          rowType: "主动",
+          level: childLevel ? formatLevel(childLevel) : "-",
+          quality: childQuality && childQuality !== "-" ? formatQuality(childQuality) : "品质0%",
+          sockets: childSockets || "-",
+          requirements: childRequirements || "-",
+        };
+        childRow.text = `${childName}${childRow.level !== "-" ? ` Lv${childRow.level}` : ""} ${childRow.quality}${childSockets ? ` ${childSockets}孔` : ""}${childRow.requirements !== "-" ? ` 需求:${childRow.requirements}` : ""}`;
+        nestedActives.push(childRow);
       }
     }
 
     const displayLevel = formatLevel(level);
     const lines = [];
-    lines.push(`${index + 1}. ${name} | Lv${displayLevel} | Q${formatQuality(quality)} | ${sockets || "-"}孔`);
+    lines.push(`${index + 1}. ${name} | Lv${displayLevel} | ${formatQuality(quality)} | ${sockets || "-"}孔`);
     lines.push(`   类型: ${type.label}`);
     if (tags) lines.push(`   标签: ${tags}`);
-    lines.push(`   辅助: ${supports.length ? supports.map((support) => support.text).join(" / ") : "-"}`);
-    if (nestedActives.length) lines.push(`   嵌套主动: ${nestedActives.join(" / ")}`);
+    if (requirements) lines.push(`   需求: ${requirements}`);
+    const tableRows = [...supports, ...nestedActives];
+    lines.push(`   已插入技能: ${tableRows.length ? tableRows.map((item) => `${item.rowType}:${item.text || item.name}`).join(" / ") : "-"}`);
     return {
       name,
       originalIndex: index,
@@ -335,6 +391,7 @@
       quality: formatQuality(quality),
       sockets: sockets || "-",
       tags,
+      requirements,
       skillType: type.label,
       skillTypeClass: type.className,
       supports,
@@ -436,7 +493,7 @@
         z-index: 1;
         width: 986px;
         max-width: 100%;
-        margin: 18px 0 0 77px;
+        margin: 18px 0 0 96px;
         padding: 0 !important;
         color: #b9aa88;
       }
@@ -576,7 +633,8 @@
       #${PANEL_ID} .codex-skill-type.codex-type-active {
         color: #d9b35f;
       }
-      #${PANEL_ID} .codex-skill-type.codex-type-spirit {
+      #${PANEL_ID} .codex-skill-type.codex-type-spirit,
+      #${PANEL_ID} .codex-skill-type.codex-type-passive {
         color: #75c58e;
       }
       #${PANEL_ID} .codex-skill-type.codex-type-granted {
@@ -626,9 +684,28 @@
         width: 46px;
         text-align: center !important;
       }
+      #${PANEL_ID} .codex-support-type {
+        width: 72px;
+        text-align: center !important;
+      }
+      #${PANEL_ID} td.codex-support-type {
+        font-weight: 700;
+      }
+      #${PANEL_ID} td.codex-support-type-active {
+        color: #d9b35f;
+      }
+      #${PANEL_ID} td.codex-support-type-passive {
+        color: #75c58e;
+      }
+      #${PANEL_ID} td.codex-support-type-spirit {
+        color: #8fd8a4;
+      }
       #${PANEL_ID} .codex-support-level,
       #${PANEL_ID} .codex-support-quality {
         width: 120px;
+      }
+      #${PANEL_ID} .codex-support-requirements {
+        width: 180px;
       }
       #${PANEL_ID} pre.codex-skill-plain {
         margin: 0;
@@ -666,6 +743,12 @@
       #${PANEL_ID}.codex-skill-panel-mounted button:hover {
         background: rgba(46, 41, 30, 0.95);
       }
+      #${PANEL_ID}.codex-skill-panel-mounted button.codex-active-control {
+        border-color: #d9b35f;
+        color: #f0d99a;
+        background: rgba(150, 127, 82, 0.28);
+        box-shadow: inset 0 0 0 1px rgba(240, 217, 154, 0.18);
+      }
       #${PANEL_ID}.codex-skill-panel-mounted .codex-skill-body {
         padding: 10px 12px 2px;
         background: rgba(8, 9, 9, 0.78);
@@ -685,7 +768,8 @@
       #${PANEL_ID}.codex-skill-panel-mounted .codex-skill-card.codex-type-active {
         border-left: 4px solid #d9b35f;
       }
-      #${PANEL_ID}.codex-skill-panel-mounted .codex-skill-card.codex-type-spirit {
+      #${PANEL_ID}.codex-skill-panel-mounted .codex-skill-card.codex-type-spirit,
+      #${PANEL_ID}.codex-skill-panel-mounted .codex-skill-card.codex-type-passive {
         border-left: 4px solid #75c58e;
       }
       #${PANEL_ID}.codex-skill-panel-mounted .codex-skill-card.codex-type-granted {
@@ -819,32 +903,31 @@
   function summarizeRows(rows) {
     return rows.reduce((summary, row) => {
       summary.total += 1;
-      summary.supports += row.supports?.length || 0;
       if (row.skillType === "主动技能") summary.active += 1;
+      if (row.skillType === "被动技能") summary.passive += 1;
       if (row.skillType === "精魂技能") summary.spirit += 1;
       return summary;
-    }, { total: 0, active: 0, spirit: 0, supports: 0 });
+    }, { total: 0, active: 0, passive: 0, spirit: 0 });
   }
 
   function filterRows(rows) {
     if (currentFilter === "active") return rows.filter((row) => row.skillType === "主动技能");
+    if (currentFilter === "passive") return rows.filter((row) => row.skillType === "被动技能");
     if (currentFilter === "spirit") return rows.filter((row) => row.skillType === "精魂技能");
-    if (currentFilter === "linked") return rows.filter((row) => (row.supports?.length || 0) > 0);
-    if (currentFilter === "empty") return rows.filter((row) => (row.supports?.length || 0) === 0);
     return [...rows];
   }
 
   function sortedRows(rows) {
     const result = [...rows];
     if (currentSort === "type") {
-      const order = { "主动技能": 0, "精魂技能": 1, "装备赋予": 2 };
+      const order = { "主动技能": 0, "被动技能": 1, "精魂技能": 2, "装备赋予": 3 };
       result.sort((a, b) => (order[a.skillType] ?? 9) - (order[b.skillType] ?? 9) || a.originalIndex - b.originalIndex);
     }
     return result;
   }
 
   function visibleRows(rows) {
-    if (!["all", "active", "spirit", "linked", "empty"].includes(currentFilter)) currentFilter = "all";
+    if (!["all", "active", "passive", "spirit"].includes(currentFilter)) currentFilter = "all";
     if (!["original", "type"].includes(currentSort)) currentSort = "original";
     return sortedRows(filterRows(rows));
   }
@@ -964,7 +1047,7 @@
     const summary = summarizeRows(rows);
     const summaryEl = panel.querySelector(".codex-skill-summary");
     if (summaryEl) {
-      summaryEl.textContent = `总技能 ${summary.total} | 主动 ${summary.active} | 精魂 ${summary.spirit} | 总辅助石 ${summary.supports} | 当前显示 ${shownRows.length}`;
+      summaryEl.textContent = `总技能 ${summary.total} | 主动 ${summary.active} | 被动 ${summary.passive}${summary.spirit ? ` | 精魂 ${summary.spirit}` : ""}`;
     }
     panel.querySelectorAll("[data-filter]").forEach((button) => {
       button.classList.toggle("codex-active-control", button.dataset.filter === currentFilter);
@@ -992,9 +1075,13 @@
       if (!row) return;
       const nameEl = card.querySelector(".codex-skill-name");
       if (nameEl) nameEl.textContent = localizedName(row.name);
+      const tableRows = [
+        ...(row.supports || []).map((support) => ({ ...support, rowType: support.rowType || "被动" })),
+        ...(row.nestedActives || []).map((active) => ({ ...active, rowType: active.rowType || "主动" })),
+      ];
       card.querySelectorAll(".codex-support-table tbody tr").forEach((tr, supportIndex) => {
         const supportNameEl = tr.querySelector(".codex-support-name");
-        if (supportNameEl) supportNameEl.textContent = localizedName(row.supports?.[supportIndex]?.name || "-");
+        if (supportNameEl) supportNameEl.textContent = localizedName(tableRows[supportIndex]?.name || "-");
       });
     });
     updateControls(panel, lastRows, visibleRows(lastRows));
@@ -1006,7 +1093,7 @@
     setInterval(() => {
       const panel = document.getElementById(PANEL_ID);
       const skillPanel = document.querySelector(".skill-panel");
-      if (panel && skillPanel && panel.previousElementSibling !== skillPanel) {
+      if (panel && skillPanel) {
         mountPanel(panel);
       }
     }, 1500);
@@ -1039,6 +1126,7 @@
             <div class="codex-skill-meta"></div>
           </div>
           <div class="codex-skill-line codex-skill-tags"></div>
+          <div class="codex-skill-line codex-skill-requirements"></div>
           <div class="codex-skill-line codex-skill-supports"></div>
           <div class="codex-skill-line codex-skill-nested"></div>
         `;
@@ -1046,31 +1134,48 @@
         typeBadge.textContent = row.skillType || "主动技能";
         if (row.skillTypeClass) typeBadge.classList.add(row.skillTypeClass);
         card.querySelector(".codex-skill-name").textContent = localizedName(row.name);
-        card.querySelector(".codex-skill-meta").textContent = `Lv${row.level} / Q${row.quality} / ${row.sockets}孔`;
+        card.querySelector(".codex-skill-meta").textContent = `Lv${row.level} / ${row.quality} / ${row.sockets}孔`;
         const tags = card.querySelector(".codex-skill-tags");
         tags.innerHTML = `<span class="codex-skill-label">标签</span>${row.tags || "-"}`;
+        const requirements = card.querySelector(".codex-skill-requirements");
+        if (row.requirements) {
+          requirements.innerHTML = `<span class="codex-skill-label">需求</span>${row.requirements}`;
+        } else {
+          requirements.remove();
+        }
         const supports = card.querySelector(".codex-skill-supports");
-        supports.innerHTML = `<span class="codex-skill-label">辅助</span>${row.supports.length} 个`;
-        if (row.supports.length) {
+        const tableRows = [
+          ...row.supports.map((support) => ({ ...support, rowType: support.rowType || "被动" })),
+          ...row.nestedActives.map((active) => ({ ...active, rowType: active.rowType || "主动" })),
+        ];
+        supports.innerHTML = `<span class="codex-skill-label">已插入技能</span>${tableRows.length} 个`;
+        if (tableRows.length) {
           const table = document.createElement("table");
           table.className = "codex-support-table";
           table.innerHTML = `
             <thead>
               <tr>
                 <th class="codex-support-index">#</th>
-                <th>辅助石</th>
+                <th class="codex-support-type">类型</th>
+                <th>技能石</th>
                 <th class="codex-support-level">等级</th>
                 <th class="codex-support-quality">品质</th>
+                <th class="codex-support-requirements">需求</th>
               </tr>
             </thead>
             <tbody></tbody>
           `;
           const tbody = table.querySelector("tbody");
-          row.supports.forEach((support, supportIndex) => {
+          tableRows.forEach((support, supportIndex) => {
             const tr = document.createElement("tr");
             const indexTd = document.createElement("td");
             indexTd.className = "codex-support-index";
             indexTd.textContent = String(supportIndex + 1);
+            const typeTd = document.createElement("td");
+            const rowType = support.rowType || "被动";
+            const typeClass = rowType === "主动" ? "active" : rowType === "精魂" ? "spirit" : "passive";
+            typeTd.className = `codex-support-type codex-support-type-${typeClass}`;
+            typeTd.textContent = rowType;
             const nameTd = document.createElement("td");
             nameTd.className = "codex-support-name";
             nameTd.textContent = localizedName(support.name || "-");
@@ -1079,18 +1184,17 @@
             levelTd.textContent = support.level && support.level !== "-" ? `Lv${support.level}` : "-";
             const qualityTd = document.createElement("td");
             qualityTd.className = "codex-support-quality";
-            qualityTd.textContent = `Q${support.quality || "+ 0%"}`;
-            tr.append(indexTd, nameTd, levelTd, qualityTd);
+            qualityTd.textContent = support.quality || (rowType === "主动" ? "品质0%" : "-");
+            const requirementsTd = document.createElement("td");
+            requirementsTd.className = "codex-support-requirements";
+            requirementsTd.textContent = support.requirements || "-";
+            tr.append(indexTd, typeTd, nameTd, levelTd, qualityTd, requirementsTd);
             tbody.appendChild(tr);
           });
           supports.appendChild(table);
         }
         const nested = card.querySelector(".codex-skill-nested");
-        if (row.nestedActives.length) {
-          nested.innerHTML = `<span class="codex-skill-label">嵌套主动</span>${row.nestedActives.join(" / ")}`;
-        } else {
-          nested.remove();
-        }
+        nested.remove();
         body.appendChild(card);
       }
     } else {
@@ -1119,7 +1223,7 @@
       panel.id = PANEL_ID;
       panel.innerHTML = `
         <div class="codex-skill-header">
-          <div class="codex-skill-title">技能文字信息 <span class="codex-skill-updated">脚本更新：${SCRIPT_UPDATED_AT}</span></div>
+          <div class="codex-skill-title">技能 <span class="codex-skill-updated">脚本更新：${SCRIPT_UPDATED_AT}</span></div>
           <div class="codex-skill-actions">
             <button type="button" data-action="refresh">刷新</button>
             <button type="button" data-action="copy">复制</button>
@@ -1137,9 +1241,7 @@
             <span class="codex-control-label">筛选</span>
             <button type="button" data-filter="all">全部</button>
             <button type="button" data-filter="active">主动</button>
-            <button type="button" data-filter="spirit">精魂</button>
-            <button type="button" data-filter="linked">有辅助</button>
-            <button type="button" data-filter="empty">无辅助</button>
+            <button type="button" data-filter="passive">被动</button>
           </div>
           <div class="codex-control-group codex-sort-group">
             <span class="codex-control-label">排序</span>
