@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         POE2 WeGameBD增强
 // @namespace    local.codex.wegame.poe2
-// @version      0.1.17
+// @version      1.0.0
 // @updated      2026-06-28 13:48:37
 // @description  在 WeGame 流放之路2 BD 分享页底部展示可复制的文字版技能信息
 // @author       维克牛
