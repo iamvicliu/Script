@@ -21,10 +21,6 @@
 
 ## 适用页面
 
-```text
-https://www.wegame.com.cn/helper/poe2/*
-```
-
 主要用于这类分享链接：
 
 ```text
