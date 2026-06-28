@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         POE2 WeGame增强
+// @name         POE2 WeGameBD增强
 // @namespace    local.codex.wegame.poe2
 // @version      0.1.17
-// @updated      2026-06-28 13:23:32
+// @updated      2026-06-28 13:48:37
 // @description  在 WeGame 流放之路2 BD 分享页底部展示可复制的文字版技能信息
 // @author       维克牛
 // @license      MIT
@@ -21,7 +21,7 @@
   const API_BASE = "https://www.wegame.com.cn/api/v1/wegame.pallas.poe2.Profile";
   const PANEL_ID = "codex-poe2-skill-text-panel";
   const STYLE_ID = "codex-poe2-skill-text-style";
-  const SCRIPT_UPDATED_AT = "2026-06-28 13:23:32";
+  const SCRIPT_UPDATED_AT = "2026-06-28 13:48:37";
   const NAME_LANGS = ["cn", "tw", "us"];
   const NAME_LANG_LABELS = { cn: "简体", tw: "繁体", us: "EN" };
 
