@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2 NinjaBD增强
 // @namespace    local.codex.ninja.poe2
-// @version      0.1.6
-// @updated      2026-06-29 14:52:30
+// @version      0.1.7
+// @updated      2026-06-29 22:49:29
 // @description  在 poe.ninja POE2 BD 页面底部展示可复制的技能表格，并支持技能名称语言切换
 // @author       维克牛
 // @license      MIT
@@ -32,7 +32,7 @@
   const API_ROOT = "https://poe.ninja/poe2/api/profile/characters";
   const PANEL_ID = "codex-poe2-ninja-skill-panel";
   const STYLE_ID = "codex-poe2-ninja-skill-style";
-  const SCRIPT_UPDATED_AT = "2026-06-29 14:52:30";
+  const SCRIPT_UPDATED_AT = "2026-06-29 22:49:29";
   const DEFAULT_HOSTS = ["poe.ninja", "www.poe.ninja", "poe.show", "www.poe.show", "ninja.710421059.xyz"];
   const MIRROR_HOSTS_KEY = "codex_poe2_ninja_mirror_hosts";
   const NAME_LANGS = ["us", "cn", "tw"];
@@ -662,6 +662,13 @@
     return document.getElementById(PANEL_ID);
   }
 
+  function panelMountTarget() {
+    return document.querySelector("#__next")
+      || document.querySelector("#root")
+      || document.querySelector("[data-reactroot]")
+      || document.body;
+  }
+
   function mountPanel() {
     ensureStyle();
     let root = panel();
@@ -698,8 +705,7 @@
       `;
       root.addEventListener("click", onPanelClick);
     }
-    const main = document.querySelector("main") || document.querySelector("#__next") || document.body;
-    main.appendChild(root);
+    panelMountTarget().appendChild(root);
     return root;
   }
 
