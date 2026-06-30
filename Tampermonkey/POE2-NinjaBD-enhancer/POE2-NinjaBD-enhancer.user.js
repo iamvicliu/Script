@@ -2,7 +2,7 @@
 // @name         POE2 NinjaBD增强
 // @namespace    local.codex.ninja.poe2
 // @version      1.0
-// @updated      2026-06-30 23:49:50
+// @updated      2026-07-01 00:47:53
 // @description  在 poe.ninja POE2 BD 页面底部展示可复制的技能表格，并支持技能名称语言切换
 // @author       维克牛
 // @license      MIT
@@ -35,10 +35,11 @@
 
   const API_ROOT = "https://poe.ninja/poe2/api/profile/characters";
   const STYLE_ID = "codex-poe2-ninja-skill-style";
-  const SCRIPT_UPDATED_AT = "2026-06-30 23:49:50";
+  const SCRIPT_UPDATED_AT = "2026-07-01 00:47:53";
   const DEFAULT_HOSTS = ["poe.ninja", "www.poe.ninja", "poe.show", "www.poe.show", "ninja.710421059.xyz"];
   const MIRROR_HOSTS_KEY = "codex_poe2_ninja_mirror_hosts";
   const NAME_MAP_CACHE_KEY = "codex_poe2_ninja_name_maps_v1";
+  const DIRECT_NAME_CACHE_KEY = "codex_poe2_ninja_direct_names_v1";
   const NAME_MAP_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const NAME_LANGS = ["us", "cn", "tw"];
   const NAME_LANG_LABELS = { us: "EN", cn: "简体", tw: "繁体" };
@@ -56,6 +57,7 @@
   let nameLangMessage = "";
   let poe2dbNameMaps = null;
   let poe2dbNameMapsPromise = null;
+  let directNameMaps = null;
 
   function cleanText(value) {
     return String(value ?? "")
@@ -162,7 +164,7 @@
     GM_registerMenuCommand("设置 NinjaBD 镜像站", openMirrorSettings);
   }
 
-  function requestText(url, responseType = "text") {
+  function requestText(url, responseType = "text", timeoutMs = 15000) {
     const gmRequest = typeof GM_xmlhttpRequest === "function"
       ? GM_xmlhttpRequest
       : (typeof GM === "object" && typeof GM.xmlHttpRequest === "function" ? GM.xmlHttpRequest : null);
@@ -173,6 +175,7 @@
           url,
           responseType,
           headers: { "Accept": responseType === "json" ? "application/json" : "text/plain", "Referer": "https://poe.ninja/" },
+          timeout: timeoutMs,
           onload: (response) => {
             if (response.status >= 200 && response.status < 300) {
               resolve(responseType === "json" ? response.response : response.responseText);
@@ -181,12 +184,17 @@
             }
           },
           onerror: () => reject(new Error(`请求失败：${url}`)),
+          ontimeout: () => reject(new Error(`请求超时：${url}`)),
         });
       });
     }
-    return fetch(url, { credentials: "omit" }).then(async (response) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    return fetch(url, { credentials: "omit", signal: controller.signal }).then(async (response) => {
       if (!response.ok) throw new Error(`${url} HTTP ${response.status}`);
       return responseType === "json" ? response.json() : response.text();
+    }).finally(() => {
+      clearTimeout(timer);
     });
   }
 
@@ -227,6 +235,104 @@
     } catch (error) {
       console.warn("POE2DB 名称缓存保存失败", error);
     }
+  }
+
+  function unpackDirectNameMaps(cache) {
+    const maps = { cn: new Map(), tw: new Map(), failed: new Map() };
+    if (!cache || Date.now() - Number(cache.createdAt || 0) > NAME_MAP_CACHE_TTL_MS) return maps;
+    maps.cn = new Map(Array.isArray(cache.cn) ? cache.cn : []);
+    maps.tw = new Map(Array.isArray(cache.tw) ? cache.tw : []);
+    maps.failed = new Map(Array.isArray(cache.failed) ? cache.failed : []);
+    return maps;
+  }
+
+  function loadDirectNameMaps() {
+    if (!directNameMaps) directNameMaps = unpackDirectNameMaps(gmGet(DIRECT_NAME_CACHE_KEY, null));
+    return directNameMaps;
+  }
+
+  function saveDirectNameMaps() {
+    if (!directNameMaps) return;
+    try {
+      gmSet(DIRECT_NAME_CACHE_KEY, {
+        createdAt: Date.now(),
+        cn: Array.from(directNameMaps.cn.entries()),
+        tw: Array.from(directNameMaps.tw.entries()),
+        failed: Array.from(directNameMaps.failed.entries()),
+      });
+    } catch (error) {
+      console.warn("POE2DB 按需名称缓存保存失败", error);
+    }
+  }
+
+  function poe2dbSlugFromName(name) {
+    return cleanText(name)
+      .replace(/\s*\([^)]*\)\s*$/g, "")
+      .replace(/[’']/g, "")
+      .replace(/[^A-Za-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  }
+
+  function localizedTitleFromPoe2dbHtml(html) {
+    const raw = String(html || "");
+    const metaTitle = raw.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+      || raw.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+    const title = metaTitle?.[1] || raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "";
+    return cleanText(title)
+      .replace(/\s*-\s*(PoE2DB|流亡2编年史|流亡編年史|Path of Exile 2).*/i, "")
+      .replace(/\s*-\s*Path of Exile 2 Wiki.*/i, "")
+      .trim();
+  }
+
+  function collectTranslatableNames() {
+    const names = [];
+    for (const row of lastRows) {
+      names.push(row.name);
+      row.inserted.forEach((item) => names.push(item.name));
+      row.dpsRows.forEach((dps) => names.push(dps.name));
+    }
+    for (const row of [...lastEquipment, ...lastJewels]) {
+      names.push(row.name, row.baseType);
+      row.socketed.forEach((name) => names.push(name));
+    }
+    return [...new Set(names.map(cleanText).filter((name) => name && name !== "-" && /[A-Za-z]/.test(name)))];
+  }
+
+  async function loadDirectTranslationsForCurrent(lang) {
+    if (lang === "us") return;
+    const maps = loadDirectNameMaps();
+    const target = maps[lang] || (maps[lang] = new Map());
+    const names = collectTranslatableNames().filter((name) => {
+      const key = normalizeNameKey(name);
+      return !target.has(key) && !maps.failed.has(`${lang}:${key}`);
+    });
+    if (!names.length) return;
+
+    let changed = false;
+    const queue = names.slice(0, 80);
+    const workers = Array.from({ length: Math.min(6, queue.length) }, async () => {
+      while (queue.length) {
+        const name = queue.shift();
+        const key = normalizeNameKey(name);
+        const slug = poe2dbSlugFromName(name);
+        if (!slug) continue;
+        try {
+          const html = await requestText(`https://poe2db.tw/${lang}/${encodeURIComponent(slug)}`, "text", 6000);
+          const translated = localizedTitleFromPoe2dbHtml(html);
+          if (translated && normalizeNameKey(translated) !== key && !/^PoE2DB/i.test(translated)) {
+            target.set(key, translated);
+          } else {
+            maps.failed.set(`${lang}:${key}`, Date.now());
+          }
+          changed = true;
+        } catch (_) {
+          maps.failed.set(`${lang}:${key}`, Date.now());
+          changed = true;
+        }
+      }
+    });
+    await Promise.allSettled(workers);
+    if (changed) saveDirectNameMaps();
   }
 
   function decodePart(value) {
@@ -305,10 +411,10 @@
     if (force) poe2dbNameMapsPromise = null;
 
     poe2dbNameMapsPromise = (async () => {
-      const html = await requestText("https://poe2db.tw/cn/");
+      const html = await requestText("https://poe2db.tw/cn/", "text", 8000);
       const headerMatch = html.match(/https:\/\/cdn\.poe2db\.tw\/js\/poedb_header\.[a-f0-9]+\.js/);
       if (!headerMatch) throw new Error("未找到 POE2DB header 脚本");
-      const headerJs = await requestText(headerMatch[0]);
+      const headerJs = await requestText(headerMatch[0], "text", 8000);
       const files = {};
       for (const lang of NAME_LANGS) {
         const match = headerJs.match(new RegExp(`autocompletecb_${lang}\\.[a-z0-9]+\\.json`, "i"));
@@ -319,7 +425,7 @@
       const byEnName = new Map(poe2dbNameMaps?.byEnName || []);
       await Promise.allSettled(NAME_LANGS.map(async (lang) => {
         if (!files[lang]) return;
-        const list = JSON.parse(await requestText(files[lang]));
+        const list = JSON.parse(await requestText(files[lang], "text", 8000));
         byValue[lang] = new Map();
         for (const item of Array.isArray(list) ? list : []) {
           const value = cleanText(item.value || "");
@@ -332,6 +438,9 @@
           }
         }
       }));
+      if (!byEnName.size || !byValue.cn?.size || !byValue.tw?.size) {
+        throw new Error("POE2DB 全量名称表为空");
+      }
       poe2dbNameMaps = { byValue, byEnName };
       saveCachedNameMaps(poe2dbNameMaps);
       return poe2dbNameMaps;
@@ -341,10 +450,18 @@
 
   function localizedName(name) {
     const cleanName = cleanText(name);
-    if (!cleanName || currentNameLang === "us" || !poe2dbNameMaps) return cleanName;
-    const value = poe2dbNameMaps.byEnName.get(cleanName) || poe2dbNameMaps.byEnName.get(normalizeNameKey(cleanName));
-    if (!value) return currentNameLang === "tw" ? simplifiedToTraditionalFallback(cleanName) : cleanName;
-    return poe2dbNameMaps.byValue[currentNameLang]?.get(value) || (currentNameLang === "tw" ? simplifiedToTraditionalFallback(cleanName) : cleanName);
+    if (!cleanName || currentNameLang === "us") return cleanName;
+    const key = normalizeNameKey(cleanName);
+    const direct = loadDirectNameMaps()?.[currentNameLang]?.get(key);
+    if (direct) return currentNameLang === "tw" ? simplifiedToTraditionalFallback(direct) : direct;
+    if (poe2dbNameMaps) {
+      const value = poe2dbNameMaps.byEnName.get(cleanName) || poe2dbNameMaps.byEnName.get(key);
+      if (value) {
+        const translated = poe2dbNameMaps.byValue[currentNameLang]?.get(value);
+        if (translated) return currentNameLang === "tw" ? simplifiedToTraditionalFallback(translated) : translated;
+      }
+    }
+    return currentNameLang === "tw" ? simplifiedToTraditionalFallback(cleanName) : cleanName;
   }
 
   async function ensureNameLanguageLoaded() {
@@ -358,7 +475,10 @@
     nameLangMessage = `${NAME_LANG_LABELS[currentNameLang]} 名称加载中`;
     updateControls();
     try {
-      await loadPoe2dbNameMaps(false);
+      await loadDirectTranslationsForCurrent(currentNameLang);
+      loadPoe2dbNameMaps(false)
+        .then(() => currentNameLang !== "us" ? renderRows() : null)
+        .catch((error) => console.warn("POE2DB 全量名称表后台加载失败", error));
       nameLangState = "ready";
       nameLangMessage = "";
       await renderRows();
