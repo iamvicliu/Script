@@ -2,7 +2,7 @@
 // @name         POE2 NinjaBD增强
 // @namespace    local.codex.ninja.poe2
 // @version      1.0
-// @updated      2026-07-01 00:47:53
+// @updated      2026-07-01 00:57:48
 // @description  在 poe.ninja POE2 BD 页面底部展示可复制的技能表格，并支持技能名称语言切换
 // @author       维克牛
 // @license      MIT
@@ -35,7 +35,7 @@
 
   const API_ROOT = "https://poe.ninja/poe2/api/profile/characters";
   const STYLE_ID = "codex-poe2-ninja-skill-style";
-  const SCRIPT_UPDATED_AT = "2026-07-01 00:47:53";
+  const SCRIPT_UPDATED_AT = "2026-07-01 00:57:48";
   const DEFAULT_HOSTS = ["poe.ninja", "www.poe.ninja", "poe.show", "www.poe.show", "ninja.710421059.xyz"];
   const MIRROR_HOSTS_KEY = "codex_poe2_ninja_mirror_hosts";
   const NAME_MAP_CACHE_KEY = "codex_poe2_ninja_name_maps_v1";
@@ -203,6 +203,10 @@
     return typeof value === "string" ? JSON.parse(value) : value;
   }
 
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   function packNameMaps(maps) {
     const byValue = {};
     for (const lang of NAME_LANGS) byValue[lang] = Array.from(maps.byValue?.[lang]?.entries?.() || []);
@@ -309,15 +313,16 @@
     if (!names.length) return;
 
     let changed = false;
-    const queue = names.slice(0, 80);
+    const queue = names.slice(0, 40);
+    const deadline = Date.now() + 12000;
     const workers = Array.from({ length: Math.min(6, queue.length) }, async () => {
-      while (queue.length) {
+      while (queue.length && Date.now() < deadline) {
         const name = queue.shift();
         const key = normalizeNameKey(name);
         const slug = poe2dbSlugFromName(name);
         if (!slug) continue;
         try {
-          const html = await requestText(`https://poe2db.tw/${lang}/${encodeURIComponent(slug)}`, "text", 6000);
+          const html = await requestText(`https://poe2db.tw/${lang}/${encodeURIComponent(slug)}`, "text", 3500);
           const translated = localizedTitleFromPoe2dbHtml(html);
           if (translated && normalizeNameKey(translated) !== key && !/^PoE2DB/i.test(translated)) {
             target.set(key, translated);
@@ -475,7 +480,15 @@
     nameLangMessage = `${NAME_LANG_LABELS[currentNameLang]} 名称加载中`;
     updateControls();
     try {
-      await loadDirectTranslationsForCurrent(currentNameLang);
+      const selectedLang = currentNameLang;
+      const directPromise = loadDirectTranslationsForCurrent(selectedLang);
+      await Promise.race([
+        directPromise,
+        sleep(3500),
+      ]);
+      directPromise
+        .then(() => currentNameLang === selectedLang ? renderRows() : null)
+        .catch((error) => console.warn("POE2DB 按需名称后台加载失败", error));
       loadPoe2dbNameMaps(false)
         .then(() => currentNameLang !== "us" ? renderRows() : null)
         .catch((error) => console.warn("POE2DB 全量名称表后台加载失败", error));
