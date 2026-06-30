@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         POE2 NinjaBD增强
 // @namespace    local.codex.ninja.poe2
-// @version      0.1.7
-// @updated      2026-06-29 22:49:29
+// @version      1.0
+// @updated      2026-06-30 23:49:50
 // @description  在 poe.ninja POE2 BD 页面底部展示可复制的技能表格，并支持技能名称语言切换
 // @author       维克牛
 // @license      MIT
-// @match        *://*/*
+// @match        *://*/poe2/builds/*
+// @match        *://*/poe2/profile/*/*/character/*
 // @run-at       document-idle
 // @grant        GM_setClipboard
 // @grant        GM_getValue
@@ -22,19 +23,23 @@
 (function () {
   "use strict";
 
+  const SCRIPT_VERSION = "1.0";
   const INSTANCE_KEY = "__POE2_NINJABD_ENHANCER_ACTIVE__";
-  if (window[INSTANCE_KEY]) {
+  const PANEL_ID = "codex-poe2-ninja-skill-panel";
+  const existingInstance = window[INSTANCE_KEY];
+  if (existingInstance && (document.getElementById(PANEL_ID) || (existingInstance.version === SCRIPT_VERSION && Date.now() - existingInstance.startedAt < 5000))) {
     console.info("POE2 NinjaBD增强已运行，跳过重复实例。");
     return;
   }
-  window[INSTANCE_KEY] = true;
+  window[INSTANCE_KEY] = { version: SCRIPT_VERSION, startedAt: Date.now() };
 
   const API_ROOT = "https://poe.ninja/poe2/api/profile/characters";
-  const PANEL_ID = "codex-poe2-ninja-skill-panel";
   const STYLE_ID = "codex-poe2-ninja-skill-style";
-  const SCRIPT_UPDATED_AT = "2026-06-29 22:49:29";
+  const SCRIPT_UPDATED_AT = "2026-06-30 23:49:50";
   const DEFAULT_HOSTS = ["poe.ninja", "www.poe.ninja", "poe.show", "www.poe.show", "ninja.710421059.xyz"];
   const MIRROR_HOSTS_KEY = "codex_poe2_ninja_mirror_hosts";
+  const NAME_MAP_CACHE_KEY = "codex_poe2_ninja_name_maps_v1";
+  const NAME_MAP_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const NAME_LANGS = ["us", "cn", "tw"];
   const NAME_LANG_LABELS = { us: "EN", cn: "简体", tw: "繁体" };
 
@@ -42,6 +47,8 @@
   let currentSort = "original";
   let currentFilter = "all";
   let lastRows = [];
+  let lastEquipment = [];
+  let lastJewels = [];
   let lastText = "";
   let currentModel = null;
   let currentRoute = null;
@@ -56,6 +63,16 @@
       .replace(/<[^>]+>/g, "")
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "\"": "&quot;",
+      "'": "&#39;",
+    })[char]);
   }
 
   function normalizeNameKey(value) {
@@ -178,6 +195,40 @@
     return typeof value === "string" ? JSON.parse(value) : value;
   }
 
+  function packNameMaps(maps) {
+    const byValue = {};
+    for (const lang of NAME_LANGS) byValue[lang] = Array.from(maps.byValue?.[lang]?.entries?.() || []);
+    return {
+      createdAt: Date.now(),
+      byValue,
+      byEnName: Array.from(maps.byEnName?.entries?.() || []),
+    };
+  }
+
+  function unpackNameMaps(cache) {
+    if (!cache || Date.now() - Number(cache.createdAt || 0) > NAME_MAP_CACHE_TTL_MS) return null;
+    const byValue = {};
+    for (const lang of NAME_LANGS) byValue[lang] = new Map(Array.isArray(cache.byValue?.[lang]) ? cache.byValue[lang] : []);
+    const byEnName = new Map(Array.isArray(cache.byEnName) ? cache.byEnName : []);
+    if (!byEnName.size || !byValue.cn?.size || !byValue.tw?.size) return null;
+    return { byValue, byEnName };
+  }
+
+  function loadCachedNameMaps() {
+    if (poe2dbNameMaps) return poe2dbNameMaps;
+    const cached = unpackNameMaps(gmGet(NAME_MAP_CACHE_KEY, null));
+    if (cached) poe2dbNameMaps = cached;
+    return poe2dbNameMaps;
+  }
+
+  function saveCachedNameMaps(maps) {
+    try {
+      gmSet(NAME_MAP_CACHE_KEY, packNameMaps(maps));
+    } catch (error) {
+      console.warn("POE2DB 名称缓存保存失败", error);
+    }
+  }
+
   function decodePart(value) {
     return decodeURIComponent(String(value || "")).replace(/^\/+|\/+$/g, "");
   }
@@ -207,8 +258,7 @@
       currentRoute = route;
       return true;
     }
-    const host = location.hostname.toLowerCase();
-    return mirrorHosts().includes(host) && /poe2/i.test(location.href);
+    return false;
   }
 
   function modelUrl(route, version) {
@@ -247,6 +297,10 @@
 
   async function loadPoe2dbNameMaps(force = false) {
     if (!force && poe2dbNameMaps) return poe2dbNameMaps;
+    if (!force) {
+      const cached = loadCachedNameMaps();
+      if (cached) return cached;
+    }
     if (!force && poe2dbNameMapsPromise) return poe2dbNameMapsPromise;
     if (force) poe2dbNameMapsPromise = null;
 
@@ -279,6 +333,7 @@
         }
       }));
       poe2dbNameMaps = { byValue, byEnName };
+      saveCachedNameMaps(poe2dbNameMaps);
       return poe2dbNameMaps;
     })();
     return poe2dbNameMapsPromise;
@@ -296,17 +351,17 @@
     if (currentNameLang === "us") {
       nameLangState = "ready";
       nameLangMessage = "";
-      updateRenderedLanguage();
+      await renderRows();
       return true;
     }
     nameLangState = "loading";
     nameLangMessage = `${NAME_LANG_LABELS[currentNameLang]} 名称加载中`;
     updateControls();
     try {
-      await loadPoe2dbNameMaps(Boolean(poe2dbNameMaps));
+      await loadPoe2dbNameMaps(false);
       nameLangState = "ready";
       nameLangMessage = "";
-      updateRenderedLanguage();
+      await renderRows();
       return true;
     } catch (error) {
       nameLangState = "error";
@@ -315,6 +370,13 @@
       updateControls();
       return false;
     }
+  }
+
+  function preloadNameMaps() {
+    if (poe2dbNameMaps || poe2dbNameMapsPromise) return;
+    setTimeout(() => {
+      loadPoe2dbNameMaps(false).catch((error) => console.warn("POE2DB 名称预加载失败", error));
+    }, 500);
   }
 
   function propValue(item, names) {
@@ -335,6 +397,19 @@
       if (parts.length) return parts.join(" ");
     }
     return cleanText(field?.value ?? field?.displayValue ?? field?.text ?? "");
+  }
+
+  function fieldText(field) {
+    if (typeof field === "string") return cleanText(field);
+    const name = cleanText(field?.name);
+    const values = Array.isArray(field?.values)
+      ? field.values.map((value) => Array.isArray(value) ? value[0] : value).map(cleanText).filter(Boolean)
+      : [];
+    if (name && values.length && /\{\d+\}/.test(name)) {
+      return cleanText(name.replace(/\{(\d+)\}/g, (_, index) => values[Number(index)] ?? ""));
+    }
+    const value = values.length ? values.join(" ") : fieldValueText(field);
+    return cleanText(name && value ? `${name} ${value}` : (name || value));
   }
 
   function formatRequirementName(name) {
@@ -482,6 +557,164 @@
     };
   }
 
+  function itemData(entry) {
+    return entry?.itemData || entry || {};
+  }
+
+  function itemName(entry) {
+    const item = itemData(entry);
+    return cleanText([item.name, item.typeLine || item.baseType].filter(Boolean).join(" ")) || cleanText(item.typeLine || item.baseType || item.name || "-");
+  }
+
+  function itemBaseType(entry) {
+    const item = itemData(entry);
+    return cleanText(item.typeLine || item.baseType || "");
+  }
+
+  function itemRarity(entry) {
+    const item = itemData(entry);
+    if (item.frameTypeId) return cleanText(item.frameTypeId);
+    const map = { 0: "Normal", 1: "Magic", 2: "Rare", 3: "Unique", 4: "Gem", 5: "Currency", 6: "Divination", 9: "Relic" };
+    return map[item.frameType] || cleanText(item.rarity || "-");
+  }
+
+  function localizedRarity(rarity) {
+    const clean = cleanText(rarity);
+    if (currentNameLang === "us" || !clean || clean === "-") return clean || "-";
+    const map = {
+      Normal: "普通",
+      Magic: "魔法",
+      Rare: "稀有",
+      Unique: "传奇",
+      Gem: "宝石",
+      Currency: "通货",
+      Divination: "命运卡",
+      Relic: "遗物",
+      RunicUnique: "符文传奇",
+      RunicRare: "符文稀有",
+      RunicMagic: "符文魔法",
+      RunicNormal: "符文普通",
+    };
+    const translated = map[clean] || clean;
+    return currentNameLang === "tw" ? simplifiedToTraditionalFallback(translated) : translated;
+  }
+
+  function itemSlot(entry, index) {
+    const item = itemData(entry);
+    const raw = cleanText(item.inventoryId || entry?.inventoryId || entry?.itemSlot || "");
+    const map = {
+      BodyArmour: "胸甲",
+      Helm: "头盔",
+      Gloves: "手套",
+      Boots: "鞋子",
+      Belt: "腰带",
+      Amulet: "项链",
+      Ring: "戒指",
+      Ring2: "戒指2",
+      Ring3: "戒指3",
+      Weapon: "武器",
+      Weapon2: "武器2",
+      Offhand: "副手",
+      Offhand2: "副手2",
+      LifeFlask: "生命药剂",
+      ManaFlask: "魔力药剂",
+      Flask: "药剂",
+      Charm: "咒符",
+      Charms: "咒符",
+      PassiveJewels: "珠宝",
+    };
+    return map[raw] || raw || `#${index + 1}`;
+  }
+
+  function itemProperties(entry) {
+    const item = itemData(entry);
+    return (item.properties || [])
+      .map(fieldText)
+      .filter(Boolean)
+      .filter((text) => !/Stack Size|Limited to/i.test(text))
+      .join(" / ");
+  }
+
+  function itemMods(entry) {
+    const item = itemData(entry);
+    const groups = [
+      ["隐式", item.implicitMods],
+      ["附魔/涂油", item.enchantMods],
+      ["显式", item.explicitMods],
+      ["破裂", item.fracturedMods],
+      ["工艺", item.craftedMods],
+      ["符文/镶嵌", item.runeMods],
+      ["污化", item.desecratedMods],
+      ["绑定", item.bondedMods],
+    ];
+    return groups.map(([label, mods]) => ({
+      label,
+      lines: (mods || []).map(cleanText).filter(Boolean),
+    })).filter((group) => group.lines.length);
+  }
+
+  function equipmentSortValue(row) {
+    const order = {
+      Weapon: 10,
+      Weapon2: 11,
+      Offhand: 20,
+      Offhand2: 21,
+      Helm: 30,
+      BodyArmour: 40,
+      Gloves: 50,
+      Boots: 60,
+      Amulet: 70,
+      Ring: 80,
+      Ring2: 81,
+      Ring3: 82,
+      Belt: 90,
+      LifeFlask: 100,
+      ManaFlask: 101,
+      Flask: 102,
+      Charm: 110,
+      Charms: 110,
+    };
+    return order[row.inventoryId] ?? 999;
+  }
+
+  function socketedItemNames(entry) {
+    const item = itemData(entry);
+    return (item.socketedItems || []).map((socketed) => cleanText(socketed.typeLine || socketed.baseType || socketed.name || "")).filter(Boolean);
+  }
+
+  function normalizeItem(entry, index, kind) {
+    const item = itemData(entry);
+    const properties = itemProperties(entry);
+    const requirements = formatRequirements(item);
+    return {
+      originalIndex: index,
+      kind,
+      slot: itemSlot(entry, index),
+      inventoryId: cleanText(item.inventoryId || entry?.inventoryId || ""),
+      name: itemName(entry),
+      baseType: itemBaseType(entry),
+      rarity: itemRarity(entry),
+      properties: [properties, requirements ? `需求 ${requirements}` : ""].filter(Boolean).join(" / ") || "-",
+      mods: itemMods(entry),
+      socketed: socketedItemNames(entry),
+      corrupted: Boolean(item.corrupted),
+      ilvl: item.ilvl || "",
+      position: [item.x != null ? `x${item.x}` : "", item.y != null ? `y${item.y}` : ""].filter(Boolean).join(" / "),
+    };
+  }
+
+  function normalizeEquipment(char) {
+    const equipment = (char.items || []).map((entry, index) => normalizeItem(entry, index, "装备"));
+    const flasks = (char.flasks || []).map((entry, index) => normalizeItem(entry, index, "药剂"));
+    return [...equipment, ...flasks]
+      .filter((item) => item.name && item.name !== "-")
+      .sort((a, b) => equipmentSortValue(a) - equipmentSortValue(b) || a.originalIndex - b.originalIndex);
+  }
+
+  function normalizeJewels(char) {
+    return (char.jewels || []).map((entry, index) => normalizeItem(entry, index, "珠宝")).filter((item) => item.name && item.name !== "-");
+  }
+
   function formatNumber(value) {
     if (value == null || value === "") return "";
     const num = Number(value);
@@ -493,15 +726,372 @@
     const lines = [];
     lines.push(`${index + 1}. ${localizedName(row.name)} | Lv${row.level} | ${row.quality} | ${row.sockets}孔`);
     lines.push(`   类型: ${row.skillType}`);
-    if (row.tags) lines.push(`   标签: ${row.tags}`);
-    if (row.requirements) lines.push(`   需求: ${row.requirements}`);
-    if (row.dpsRows.length) lines.push(`   DPS: ${row.dpsRows.map((dps) => `${dps.name}: ${formatNumber(dps.dps || dps.dotDps)}`).join(" / ")}`);
+    if (row.tags) lines.push(`   标签: ${localizedModText(row.tags)}`);
+    if (row.requirements) lines.push(`   需求: ${localizedModText(row.requirements)}`);
+    if (row.dpsRows.length) lines.push(`   DPS: ${row.dpsRows.map((dps) => `${localizedName(dps.name)}: ${formatNumber(dps.dps || dps.dotDps)}`).join(" / ")}`);
     lines.push(`   已插入技能: ${row.inserted.length ? row.inserted.map((item) => `${item.rowType}:${localizedName(item.name)}${item.level !== "-" ? ` Lv${item.level}` : ""} ${item.quality}`).join(" / ") : "-"}`);
     return lines.join("\n");
   }
 
+  function splitListText(text) {
+    const clean = cleanText(text);
+    if (!clean || clean === "-") return [];
+    return clean.split(/\s+\/\s+/).map((part) => cleanText(part)).filter(Boolean);
+  }
+
+  function itemStatusText(row) {
+    const parts = [];
+    if (row.corrupted) parts.push(currentNameLang === "us" ? "corrupted" : "已腐化");
+    if (row.ilvl) parts.push(`${currentNameLang === "us" ? "ilvl" : "物品等级"} ${row.ilvl}`);
+    const text = parts.join(" / ");
+    return currentNameLang === "tw" ? simplifiedToTraditionalFallback(text) : text;
+  }
+
+  function formatItemText(row, index) {
+    const lines = [];
+    const status = itemStatusText(row);
+    lines.push(`${index + 1}. [${row.kind}] ${row.slot} | ${localizedItemName(row)} | ${localizedRarity(row.rarity)}${status ? ` | ${status}` : ""}`);
+    const props = splitListText(row.properties).map(localizedModText);
+    if (props.length) {
+      lines.push("   属性/需求:");
+      props.forEach((prop) => lines.push(`     - ${prop}`));
+    }
+    if (row.position) lines.push(`   位置: ${row.position}`);
+    if (row.socketed.length) {
+      lines.push("   插槽:");
+      row.socketed.forEach((name) => lines.push(`     - ${localizedItemLabel(name)}`));
+    }
+    for (const group of row.mods) {
+      lines.push(`   ${group.label}:`);
+      group.lines.forEach((mod, modIndex) => lines.push(`     ${modIndex + 1}. ${localizedModText(mod)}`));
+    }
+    return lines.join("\n");
+  }
+
   function currentCopyText() {
-    return visibleRows(lastRows).map((row, index) => formatRowText(row, index)).join("\n\n");
+    const parts = [];
+    if (lastEquipment.length) parts.push("【装备/药剂】\n" + lastEquipment.map(formatItemText).join("\n\n"));
+    if (lastJewels.length) parts.push("【珠宝】\n" + lastJewels.map(formatItemText).join("\n\n"));
+    parts.push("【技能】\n" + visibleRows(lastRows).map((row, index) => formatRowText(row, index)).join("\n\n"));
+    return parts.filter(Boolean).join("\n\n");
+  }
+
+  function localizedItemName(row) {
+    if (currentNameLang === "us") return row.name;
+    const rarity = String(row.rarity || "");
+    const translatedFull = localizedName(row.name);
+    if (translatedFull && translatedFull !== row.name) return translatedFull;
+    const translatedBase = row.baseType ? localizedName(row.baseType) : "";
+    if (translatedBase && translatedBase !== row.baseType) {
+      if (/Rare|Magic/i.test(rarity) && row.name.endsWith(row.baseType)) {
+        return `${row.name.slice(0, -row.baseType.length).trim()} ${translatedBase}`.trim();
+      }
+      return translatedBase;
+    }
+    return localizedItemLabel(row.name);
+  }
+
+  function localizedItemLabel(text) {
+    const clean = cleanText(text);
+    if (!clean || clean === "-" || currentNameLang === "us") return clean || "-";
+    const translated = clean
+      .replace(/\bTranscendent Mana Flask\b/g, "超凡魔力药剂")
+      .replace(/\bGargantuan Life Flask\b/g, "巨型生命药剂")
+      .replace(/\bMana Flask\b/g, "魔力药剂")
+      .replace(/\bLife Flask\b/g, "生命药剂")
+      .replace(/\bFlask\b/g, "药剂")
+      .replace(/\bCharm\b/g, "咒符")
+      .replace(/\bVaal Ring\b/g, "瓦尔戒指")
+      .replace(/\bRing\b/g, "戒指")
+      .replace(/\bBelt\b/g, "腰带")
+      .replace(/\bAmulet\b/g, "项链")
+      .replace(/\bWand\b/g, "法杖")
+      .replace(/\bShield\b/g, "盾")
+      .replace(/\bHelmet\b/g, "头盔")
+      .replace(/\bBody Armour\b/g, "胸甲")
+      .replace(/\bBody Armor\b/g, "胸甲")
+      .replace(/\bGloves\b/g, "手套")
+      .replace(/\bBoots\b/g, "鞋子")
+      .replace(/\bJewel\b/g, "珠宝");
+    return currentNameLang === "tw" ? simplifiedToTraditionalFallback(translated) : translated;
+  }
+
+  function localizedModText(text) {
+    const clean = cleanText(text);
+    if (!clean || clean === "-" || currentNameLang === "us") return clean || "-";
+    let translated = clean
+      .replace(/\bArmoured Shield\b/g, "护甲盾")
+      .replace(/\bLevel\b/g, "等级")
+      .replace(/\bStr\b/g, "力量")
+      .replace(/\bDex\b/g, "敏捷")
+      .replace(/\bInt\b/g, "智慧")
+      .replace(/\bAoE\b/g, "范围")
+      .replace(/\bBuff\b/g, "增益")
+      .replace(/\bPersistent\b/g, "永久")
+      .replace(/\bTrigger\b/g, "触发")
+      .replace(/\bMeta\b/g, "元技能")
+      .replace(/\bMinion\b/g, "召唤生物")
+      .replace(/\bCompanion\b/g, "伙伴")
+      .replace(/\bSustained\b/g, "持续吟唱")
+      .replace(/\bChannelling\b/g, "吟唱")
+      .replace(/\bPhysical\b/g, "物理")
+      .replace(/\bCold\b/g, "冰霜")
+      .replace(/\bFire\b/g, "火焰")
+      .replace(/\bLightning\b/g, "闪电")
+      .replace(/\bChaos\b/g, "混沌")
+      .replace(/\bDurationSkill\b/g, "持续时间")
+      .replace(/\bDuration\b/g, "持续时间")
+      .replace(/\bRemnant\b/g, "残片")
+      .replace(/\bRepeatable\b/g, "可重复")
+      .replace(/\bJewel\b/g, "珠宝")
+      .replace(/\bRadius\b/g, "半径")
+      .replace(/\bSmall\b/g, "小")
+      .replace(/\bVery Large\b/g, "非常大")
+      .replace(/\bLarge\b/g, "大")
+      .replace(/\bVariable\b/g, "可变")
+      .replace(/\bCaster Modifiers\b/g, "施法词缀")
+      .replace(/\bLasts ([0-9.]+) Seconds?\b/g, "持续 $1 秒")
+      .replace(/\bRecovers ([0-9.]+) Life over ([0-9.]+) Seconds?\b/g, "回复 $1 生命，持续 $2 秒")
+      .replace(/\bRecovers ([0-9.]+) Mana every ([0-9.]+) Seconds?\b/g, "每 $2 秒回复 $1 魔力")
+      .replace(/\bConsumes ([0-9.]+) of ([0-9.]+) Charges on use\b/g, "使用时消耗 $1/$2 充能")
+      .replace(/\bCurrently has ([0-9.]+) Charges\b/g, "当前拥有 $1 充能")
+      .replace(/\bAttack\b/g, "攻击")
+      .replace(/\bMelee\b/g, "近战")
+      .replace(/\bSpell\b/g, "法术")
+      .replace(/\bProjectile\b/g, "投射物")
+      .replace(/^Only Runes can be Socketed in this item$/g, "此物品只能镶嵌符文")
+      .replace(/^(\d+)% increased effect of Socketed Runes$/g, "已镶嵌符文效果提高 $1%")
+      .replace(/^Gain (\d+)% of maximum Life as Extra maximum Runic Ward$/g, "获得最大生命 $1% 的额外最大符文护盾")
+      .replace(/^(\d+)% less maximum Life$/g, "最大生命更少 $1%")
+      .replace(/^Gain (\d+)% of Damage as Extra Damage of all Elements$/g, "获得伤害的 $1% 作为所有元素的额外伤害")
+      .replace(/^(\d+)% chance for Spell Skills to fire (\d+) additional Projectiles$/g, "法术技能有 $1% 几率额外发射 $2 个投射物")
+      .replace(/^Bonded: (.+)$/g, "绑定：$1")
+      .replace(/^Recover (\d+) Runic Ward when you Block$/g, "格挡时回复 $1 点符文护盾")
+      .replace(/^(\d+) Life gained when you Block$/g, "格挡时获得 $1 点生命")
+      .replace(/^(\d+) Mana gained when you Block$/g, "格挡时获得 $1 点魔力")
+      .replace(/^(\d+)% increased Block chance$/g, "格挡率提高 $1%")
+      .replace(/^Chance to Block Damage is Lucky$/g, "格挡伤害的几率特别幸运")
+      .replace(/^Allocates (.+)$/g, "配置 $1")
+      .replace(/^Can have 1 additional Crafted Modifier$/g, "可拥有 1 条额外工艺词缀")
+      .replace(/^Raven-Touched$/g, "鸦触")
+      .replace(/^(\d+)% increased Runic Ward$/g, "符文护盾提高 $1%")
+      .replace(/^(\d+)% increased Mana Cost Efficiency$/g, "魔力消耗效率提高 $1%")
+      .replace(/^(\d+)% increased Energy Shield Recharge Rate$/g, "能量护盾充能速度提高 $1%")
+      .replace(/^All Damage taken from Hits Contributes to Magnitude of Chill inflicted on you$/g, "所有来自击中的伤害都会影响你身上冰缓的幅度")
+      .replace(/^The Effect of Chill on you is reversed$/g, "你身上的冰缓效果反转")
+      .replace(/^Effect is not removed when Unreserved Life is Filled$/g, "未保留生命回满时效果不会移除")
+      .replace(/^No Inherent loss of Rage during effect$/g, "效果期间怒火不会自然流失")
+      .replace(/^Cannot be Stunned$/g, "不会被眩晕")
+      .replace(/^Grants Immunity to Freeze$/g, "获得冻结免疫")
+      .replace(/^Used when you become Frozen$/g, "冻结时自动使用")
+      .replace(/^Used when you become Stunned$/g, "被眩晕时自动使用")
+      .replace(/^Used when you take Cold damage from a Hit$/g, "受到冰霜击中伤害时自动使用")
+      .replace(/^Used when you take Fire damage from a Hit$/g, "受到火焰击中伤害时自动使用")
+      .replace(/^Used when you take Lightning damage from a Hit$/g, "受到闪电击中伤害时自动使用")
+      .replace(/^Grants a Power Charge on use$/g, "使用时获得一个暴击球")
+      .replace(/^(\+?\d+) to maximum Energy Shield$/g, "$1 最大能量护盾")
+      .replace(/^(\+?\d+) to maximum Life$/g, "$1 最大生命")
+      .replace(/^(\+?\d+) to maximum Mana$/g, "$1 最大魔力")
+      .replace(/^(\+?\d+) to Strength$/g, "$1 力量")
+      .replace(/^(\+?\d+) to Dexterity$/g, "$1 敏捷")
+      .replace(/^(\+?\d+) to Intelligence$/g, "$1 智慧")
+      .replace(/^(\+?\d+)% to Fire Resistance$/g, "$1% 火焰抗性")
+      .replace(/^(\+?\d+)% to Cold Resistance$/g, "$1% 冰霜抗性")
+      .replace(/^(\+?\d+)% to Lightning Resistance$/g, "$1% 闪电抗性")
+      .replace(/^(\+?\d+)% to Chaos Resistance$/g, "$1% 混沌抗性")
+      .replace(/^(\d+)% increased Energy Shield$/g, "$1% 提高能量护盾")
+      .replace(/^(\d+)% increased maximum Energy Shield$/g, "$1% 提高最大能量护盾")
+      .replace(/^(\d+)% increased maximum Life$/g, "$1% 提高最大生命")
+      .replace(/^(\d+)% increased maximum Mana$/g, "$1% 提高最大魔力")
+      .replace(/^(\d+)% increased Movement Speed$/g, "$1% 提高移动速度")
+      .replace(/^(\d+)% increased Cast Speed$/g, "$1% 提高施法速度")
+      .replace(/^(\d+)% increased Attack Speed$/g, "$1% 提高攻击速度")
+      .replace(/^(\d+)% increased Spell Damage$/g, "$1% 提高法术伤害")
+      .replace(/^(\d+)% increased Elemental Damage$/g, "$1% 提高元素伤害")
+      .replace(/^(\d+)% increased Projectile Damage$/g, "$1% 提高投射物伤害")
+      .replace(/^(\d+)% increased Duration$/g, "$1% 提高持续时间")
+      .replace(/^(\d+)% reduced Charges per use$/g, "$1% 降低每次使用消耗充能")
+      .replace(/\bmaximum Energy Shield\b/g, "最大能量护盾")
+      .replace(/\bmaximum Runic Ward\b/g, "最大符文护盾")
+      .replace(/\bRunic Ward\b/g, "符文护盾")
+      .replace(/\bRunes\b/g, "符文")
+      .replace(/\bRune\b/g, "符文")
+      .replace(/\bEnergy Shield\b/g, "能量护盾")
+      .replace(/\bRecharge Rate\b/g, "充能速度")
+      .replace(/\bCost Efficiency\b/g, "消耗效率")
+      .replace(/\bmaximum Life\b/g, "最大生命")
+      .replace(/\bLife\b/g, "生命")
+      .replace(/\bmaximum Mana\b/g, "最大魔力")
+      .replace(/\bMana\b/g, "魔力")
+      .replace(/\bEvasion Rating\b/g, "闪避值")
+      .replace(/\bArmour\b/g, "护甲")
+      .replace(/\bEvasion\b/g, "闪避")
+      .replace(/\bFire Resistance\b/g, "火焰抗性")
+      .replace(/\bCold Resistance\b/g, "冰霜抗性")
+      .replace(/\bLightning Resistance\b/g, "闪电抗性")
+      .replace(/\bChaos Resistance\b/g, "混沌抗性")
+      .replace(/\ball Elemental Resistances\b/g, "所有元素抗性")
+      .replace(/\bElemental Resistances\b/g, "元素抗性")
+      .replace(/\bResistances\b/g, "抗性")
+      .replace(/\bStrength\b/g, "力量")
+      .replace(/\bDexterity\b/g, "敏捷")
+      .replace(/\bIntelligence\b/g, "智慧")
+      .replace(/\bSpirit\b/g, "精魂")
+      .replace(/\bMovement Speed\b/g, "移动速度")
+      .replace(/\bCast Speed\b/g, "施法速度")
+      .replace(/\bAttack Speed\b/g, "攻击速度")
+      .replace(/\bCritical Hit Chance\b/g, "暴击率")
+      .replace(/\bCritical Damage Bonus\b/g, "暴击伤害加成")
+      .replace(/\bProjectile Speed\b/g, "投射物速度")
+      .replace(/\bProjectile Damage\b/g, "投射物伤害")
+      .replace(/\bSpell Damage\b/g, "法术伤害")
+      .replace(/\bElemental Damage\b/g, "元素伤害")
+      .replace(/\bPhysical Damage\b/g, "物理伤害")
+      .replace(/\bLightning damage\b/g, "闪电伤害")
+      .replace(/\bCold damage\b/g, "冰霜伤害")
+      .replace(/\bFire damage\b/g, "火焰伤害")
+      .replace(/\bAttack Damage\b/g, "攻击伤害")
+      .replace(/\bDamage\b/g, "伤害")
+      .replace(/\bCharges per use\b/g, "每次使用消耗充能")
+      .replace(/\bCharges gained\b/g, "获得的充能")
+      .replace(/\bCharges\b/g, "充能")
+      .replace(/\bDuration\b/g, "持续时间")
+      .replace(/\bRecovery\b/g, "回复")
+      .replace(/\bRarity of Items found\b/g, "物品稀有度")
+      .replace(/\bRage\b/g, "怒火")
+      .replace(/\bPower Charge\b/g, "暴击球")
+      .replace(/\bFrenzy Charge\b/g, "狂怒球")
+      .replace(/\bEndurance Charge\b/g, "耐力球")
+      .replace(/\bFreeze\b/g, "冻结")
+      .replace(/\bFrozen\b/g, "冻结")
+      .replace(/\bChill\b/g, "冰缓")
+      .replace(/\bShock\b/g, "感电")
+      .replace(/\bIgnite\b/g, "点燃")
+      .replace(/\bStun\b/g, "眩晕")
+      .replace(/\bStunned\b/g, "被眩晕")
+      .replace(/\bCurse\b/g, "诅咒")
+      .replace(/\bFlasks\b/g, "药剂")
+      .replace(/\bFlask\b/g, "药剂")
+      .replace(/\bCharm\b/g, "咒符")
+      .replace(/\bSockets\b/g, "插槽")
+      .replace(/\bSocketed\b/g, "已镶嵌")
+      .replace(/\bSocket\b/g, "插槽")
+      .replace(/\bGrants\b/g, "获得")
+      .replace(/\bGain\b/g, "获得")
+      .replace(/\bUsed when you become\b/g, "当你变为以下状态时使用：")
+      .replace(/\bUsed when you take\b/g, "当你受到以下伤害时使用：")
+      .replace(/\bfrom a Hit\b/g, "来自击中")
+      .replace(/\bwhen Hit by an Enemy\b/g, "被敌人击中时")
+      .replace(/\bduring effect\b/g, "效果期间")
+      .replace(/\bon use\b/g, "使用时")
+      .replace(/\bper use\b/g, "每次使用")
+      .replace(/\bas Life\b/g, "为生命")
+      .replace(/\bas Mana\b/g, "为魔力")
+      .replace(/\bto maximum\b/g, "最大")
+      .replace(/\bto\b/g, "至")
+      .replace(/\bof\b/g, "的")
+      .replace(/\bincreased\b/g, "提高")
+      .replace(/\breduced\b/g, "降低")
+      .replace(/\bmore\b/g, "更多")
+      .replace(/\bless\b/g, "更少")
+      .replace(/\bAdds\b/g, "附加")
+      .replace(/\bAdded\b/g, "附加")
+      .replace(/\bExtra\b/g, "额外")
+      .replace(/\bCannot be\b/g, "不能被")
+      .replace(/\bImmunity to\b/g, "免疫")
+      .replace(/\bEffect is not removed when Unreserved Life is Filled\b/g, "未保留生命回满时效果不会移除")
+      .replace(/\bNo Inherent loss of\b/g, "不会自然失去")
+      .replace(/\bRecouped\b/g, "补偿")
+      .replace(/\bLeech\b/g, "偷取")
+      .replace(/\bEnemies\b/g, "敌人")
+      .replace(/\bEnemy\b/g, "敌人")
+      .replace(/\bAttack\b/g, "攻击")
+      .replace(/\bAttacks\b/g, "攻击")
+      .replace(/\bSpell\b/g, "法术")
+      .replace(/\bSpells\b/g, "法术")
+      .replace(/\bProjectile\b/g, "投射物")
+      .replace(/\bProjectiles\b/g, "投射物")
+      .replace(/\bTriggered\b/g, "触发")
+      .replace(/\bMagnitude\b/g, "幅度")
+      .replace(/\bBuff\b/g, "增益")
+      .replace(/\bLow Mana\b/g, "低魔力")
+      .replace(/\bUnreserved\b/g, "未保留");
+    translated = translated
+      .replace(/\bQuality\b/g, "品质")
+      .replace(/\bLevel\b/g, "等级")
+      .replace(/\bStr\b/g, "力量")
+      .replace(/\bDex\b/g, "敏捷")
+      .replace(/\bInt\b/g, "智慧")
+      .replace(/\bWand\b/g, "法杖")
+      .replace(/\bShield\b/g, "盾")
+      .replace(/\bHelmet\b/g, "头盔")
+      .replace(/\bBody Armour\b/g, "胸甲")
+      .replace(/\bBody Armor\b/g, "胸甲")
+      .replace(/\bGloves\b/g, "手套")
+      .replace(/\bBoots\b/g, "鞋子")
+      .replace(/\bAmulet\b/g, "项链")
+      .replace(/\bRing\b/g, "戒指")
+      .replace(/\bBelt\b/g, "腰带")
+      .replace(/\bBlock chance\b/g, "格挡率")
+      .replace(/\bBlock\b/g, "格挡")
+      .replace(/\bLucky\b/g, "幸运")
+      .replace(/\bUnlucky\b/g, "不幸运")
+      .replace(/\bElemental Infusion\b/g, "元素灌注")
+      .replace(/\bElements\b/g, "元素")
+      .replace(/\ball\b/g, "所有")
+      .replace(/\bSkills\b/g, "技能")
+      .replace(/\bSkill\b/g, "技能")
+      .replace(/\bfire\b/g, "发射")
+      .replace(/\badditional\b/g, "额外")
+      .replace(/\bchance\b/g, "几率")
+      .replace(/\bwhile on full\b/g, "满")
+      .replace(/\bwhen collecting\b/g, "拾取时")
+      .replace(/\bsame type\b/g, "同类型")
+      .replace(/\brecovery period expires\b/g, "回复周期结束")
+      .replace(/\bfaster\b/g, "更快")
+      .replace(/\bBreak\b/g, "破坏")
+      .replace(/\bdealt\b/g, "造成")
+      .replace(/\bLeeches\b/g, "偷取")
+      .replace(/\bCast\b/g, "施放")
+      .replace(/\bEvery\b/g, "每个")
+      .replace(/\balso\b/g, "也");
+    translated = translated
+      .replace(/\bBody 护甲\b/g, "胸甲")
+      .replace(/\bBody 护甲\b/g, "胸甲")
+      .replace(/\b闪避 Rating\b/g, "闪避值")
+      .replace(/\b格挡 几率\b/g, "格挡率")
+      .replace(/\bVaal 戒指\b/g, "瓦尔戒指")
+      .replace(/\[([^\]]+)\]/g, "$1");
+    translated = translated.replace(/\s+/g, " ").trim();
+    return currentNameLang === "tw" ? simplifiedToTraditionalFallback(translated) : translated;
+  }
+
+  function renderModGroups(groups) {
+    if (!groups.length) return "-";
+    return groups.map((group) => `
+      <div class="codex-mod-group">
+        <div class="codex-mod-label">${escapeHtml(group.label)}</div>
+        <div class="codex-mod-list">
+          ${group.lines.map((line, index) => `
+            <div class="codex-list-row">
+              <span class="codex-list-marker">${index + 1}.</span>
+              <span>${escapeHtml(localizedModText(line))}</span>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `).join("");
+  }
+
+  function renderCellList(items, ordered = false) {
+    const lines = items.map((item) => cleanText(item)).filter(Boolean);
+    if (!lines.length) return "-";
+    return `<div class="codex-cell-list">${lines.map((line, index) => `
+      <div class="codex-list-row">
+        <span class="codex-list-marker">${ordered ? `${index + 1}.` : "•"}</span>
+        <span>${escapeHtml(line)}</span>
+      </div>
+    `).join("")}</div>`;
   }
 
   function summarizeRows(rows) {
@@ -535,7 +1125,7 @@
         box-sizing: border-box;
         width: min(1180px, calc(100vw - 32px));
         margin: 28px auto;
-        color: #d7dde6;
+        color: var(--color-coolgrey-100, #d7dde6);
         font-family: Inter, "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
         -webkit-user-select: text !important;
         user-select: text !important;
@@ -545,18 +1135,18 @@
       }
       #${PANEL_ID} button {
         cursor: pointer;
-        border: 1px solid #374151;
+        border: 1px solid var(--color-coolgrey-700, #374151);
         border-radius: 4px;
-        background: #111827;
-        color: #d7dde6;
+        background: var(--color-coolgrey-850, #111827);
+        color: var(--color-coolgrey-100, #d7dde6);
         padding: 5px 10px;
         font-size: 13px;
       }
-      #${PANEL_ID} button:hover { background: #1f2937; }
+      #${PANEL_ID} button:hover { background: var(--color-coolgrey-800, #1f2937); }
       #${PANEL_ID} button.codex-active-control {
-        border-color: #f5c76a;
-        color: #f8d98a;
-        background: rgba(245, 199, 106, 0.13);
+        border-color: var(--color-emerald-400, #10d9a3);
+        color: var(--color-emerald-300, #33e0b5);
+        background: rgba(16, 217, 163, 0.12);
       }
       #${PANEL_ID} button:disabled { opacity: 0.55; cursor: default; }
       #${PANEL_ID} .codex-panel-head {
@@ -566,41 +1156,82 @@
         gap: 12px;
         min-height: 46px;
         padding: 0 16px;
-        border: 1px solid #303846;
+        border: 1px solid var(--color-coolgrey-700, #303846);
         border-bottom: 0;
-        background: #111827;
+        background: var(--color-coolgrey-850, #111827);
       }
       #${PANEL_ID} .codex-title { font-size: 18px; font-weight: 650; }
-      #${PANEL_ID} .codex-updated { margin-left: 10px; color: #8b95a7; font-size: 12px; font-weight: 400; }
+      #${PANEL_ID} .codex-updated { margin-left: 10px; color: var(--color-coolgrey-400, #8b95a7); font-size: 12px; font-weight: 400; }
       #${PANEL_ID} .codex-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
       #${PANEL_ID} .codex-controls {
-        display: grid;
-        grid-template-columns: 1fr auto;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
         gap: 8px 18px;
         padding: 12px 16px;
-        border: 1px solid #303846;
-        background: #0b1018;
+        border: 1px solid var(--color-coolgrey-700, #303846);
+        background: var(--color-coolgrey-900, #0b1018);
       }
-      #${PANEL_ID} .codex-summary { grid-column: 1 / -1; color: #c8d2e1; }
+      #${PANEL_ID} .codex-summary { color: var(--color-coolgrey-200, #c8d2e1); }
       #${PANEL_ID} .codex-control-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-      #${PANEL_ID} .codex-sort-group { justify-content: flex-end; }
-      #${PANEL_ID} .codex-label { color: #8b95a7; font-size: 12px; margin-right: 2px; }
+      #${PANEL_ID} .codex-label { color: var(--color-coolgrey-400, #8b95a7); font-size: 12px; margin-right: 2px; }
       #${PANEL_ID} .codex-body {
         padding: 12px;
-        border: 1px solid #303846;
+        border: 1px solid var(--color-coolgrey-700, #303846);
         border-top: 0;
-        background: #0f1722;
+        background: rgba(8, 13, 20, 0.82);
+      }
+      #${PANEL_ID} .codex-section {
+        margin-bottom: 18px;
+      }
+      #${PANEL_ID} .codex-section-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin: 4px 0 10px;
+        color: var(--color-coolgrey-100, #f2f4f7);
+        font-size: 16px;
+        font-weight: 650;
+      }
+      #${PANEL_ID} .codex-section-title span {
+        color: var(--color-coolgrey-400, #8b95a7);
+        font-size: 12px;
+        font-weight: 400;
+      }
+      #${PANEL_ID} .codex-skill-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: -2px 0 10px;
+        padding: 8px 10px;
+        border: 1px solid var(--color-coolgrey-700, #2a3341);
+        background: rgba(255,255,255,0.02);
+      }
+      #${PANEL_ID} .codex-skill-summary {
+        color: var(--color-coolgrey-400, #8b95a7);
+        font-size: 12px;
+        font-weight: 400;
+      }
+      #${PANEL_ID} .codex-skill-controls {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        flex-wrap: wrap;
       }
       #${PANEL_ID} .codex-skill-card {
         margin-bottom: 10px;
         padding: 11px 14px;
-        border: 1px solid #2a3341;
+        border: 1px solid var(--color-coolgrey-700, #2a3341);
         border-left-width: 4px;
-        background: #111827;
+        background: rgba(255,255,255,0.02);
       }
       #${PANEL_ID} .codex-type-active { border-left-color: #f5c76a; }
-      #${PANEL_ID} .codex-type-passive, #${PANEL_ID} .codex-type-spirit { border-left-color: #76d191; }
-      #${PANEL_ID} .codex-type-granted { border-left-color: #7bb6f0; }
+      #${PANEL_ID} .codex-type-passive, #${PANEL_ID} .codex-type-spirit { border-left-color: var(--color-emerald-400, #10d9a3); }
+      #${PANEL_ID} .codex-type-granted { border-left-color: var(--color-emerald-400, #10d9a3); }
       #${PANEL_ID} .codex-top {
         display: flex;
         align-items: center;
@@ -615,18 +1246,18 @@
         font-size: 12px;
       }
       #${PANEL_ID} .codex-type-badge.codex-type-active { color: #f5c76a; }
-      #${PANEL_ID} .codex-type-badge.codex-type-passive, #${PANEL_ID} .codex-type-badge.codex-type-spirit { color: #76d191; }
+      #${PANEL_ID} .codex-type-badge.codex-type-passive, #${PANEL_ID} .codex-type-badge.codex-type-spirit { color: var(--color-emerald-300, #33e0b5); }
       #${PANEL_ID} .codex-type-badge.codex-type-granted { color: #7bb6f0; }
       #${PANEL_ID} .codex-name { font-size: 16px; font-weight: 650; color: #f2f4f7; }
       #${PANEL_ID} .codex-meta {
         color: #c8d2e1;
-        border: 1px solid #263244;
+        border: 1px solid var(--color-coolgrey-700, #263244);
         background: rgba(255,255,255,0.03);
         padding: 1px 8px;
         font-size: 13px;
       }
-      #${PANEL_ID} .codex-line { margin-top: 4px; color: #aeb8c8; font-size: 13px; line-height: 1.45; word-break: break-word; }
-      #${PANEL_ID} .codex-line-label { color: #7f8ba0; margin-right: 6px; }
+      #${PANEL_ID} .codex-line { margin-top: 4px; color: var(--color-coolgrey-300, #aeb8c8); font-size: 13px; line-height: 1.45; word-break: break-word; }
+      #${PANEL_ID} .codex-line-label { color: var(--color-coolgrey-500, #7f8ba0); margin-right: 6px; }
       #${PANEL_ID} table {
         width: 100%;
         margin-top: 8px;
@@ -635,13 +1266,13 @@
         font-size: 13px;
       }
       #${PANEL_ID} th, #${PANEL_ID} td {
-        border: 1px solid #2a3341;
+        border: 1px solid var(--color-coolgrey-700, #2a3341);
         padding: 5px 8px;
         text-align: left;
         vertical-align: middle;
         word-break: break-word;
       }
-      #${PANEL_ID} th { color: #9aa6b8; font-weight: 500; background: rgba(255,255,255,0.03); }
+      #${PANEL_ID} th { color: var(--color-coolgrey-300, #9aa6b8); font-weight: 500; background: rgba(255,255,255,0.03); }
       #${PANEL_ID} .codex-index { width: 46px; text-align: center; }
       #${PANEL_ID} .codex-insert-type { width: 72px; text-align: center; font-weight: 700; }
       #${PANEL_ID} .codex-insert-type-active { color: #f5c76a; }
@@ -649,10 +1280,46 @@
       #${PANEL_ID} .codex-insert-type-lineage { color: #c99cff; }
       #${PANEL_ID} .codex-level, #${PANEL_ID} .codex-quality, #${PANEL_ID} .codex-sockets { width: 96px; }
       #${PANEL_ID} .codex-requirements { width: 190px; }
+      #${PANEL_ID} .codex-item-slot { width: 86px; }
+      #${PANEL_ID} .codex-item-rarity { width: 82px; }
+      #${PANEL_ID} .codex-item-props { width: 180px; }
+      #${PANEL_ID} .codex-item-socketed { width: 170px; }
+      #${PANEL_ID} .codex-item-mods { color: var(--color-coolgrey-200, #c8d2e1); }
+      #${PANEL_ID} .codex-item-name { color: var(--color-coolgrey-100, #f2f4f7); font-weight: 600; }
+      #${PANEL_ID} .codex-mod-group + .codex-mod-group {
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px solid var(--color-coolgrey-700, #263244);
+      }
+      #${PANEL_ID} .codex-mod-label {
+        margin-bottom: 2px;
+        color: var(--color-amber-300, #f5c76a);
+        font-size: 12px;
+      }
+      #${PANEL_ID} .codex-mod-list {
+        margin: 2px 0 0 0;
+        padding-left: 0;
+      }
+      #${PANEL_ID} .codex-cell-list {
+        margin: 0;
+        padding-left: 0;
+      }
+      #${PANEL_ID} .codex-list-row {
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr);
+        column-gap: 6px;
+        margin: 2px 0;
+        line-height: 1.42;
+      }
+      #${PANEL_ID} .codex-list-marker {
+        color: var(--color-coolgrey-300, #9aa6b8);
+        text-align: right;
+        user-select: text;
+      }
       @media (max-width: 760px) {
         #${PANEL_ID} { width: calc(100vw - 16px); margin: 16px 8px; }
-        #${PANEL_ID} .codex-controls { grid-template-columns: 1fr; }
-        #${PANEL_ID} .codex-sort-group { justify-content: flex-start; }
+        #${PANEL_ID} .codex-skill-toolbar { align-items: flex-start; }
+        #${PANEL_ID} .codex-skill-controls { justify-content: flex-start; }
       }
     `;
     document.head.appendChild(style);
@@ -663,13 +1330,31 @@
   }
 
   function panelMountTarget() {
-    return document.querySelector("#__next")
-      || document.querySelector("#root")
-      || document.querySelector("[data-reactroot]")
-      || document.body;
+    return document.querySelector("main") || document.querySelector("article");
   }
 
-  function mountPanel() {
+  function waitForPanelMountTarget(timeoutMs = 6000) {
+    const existing = panelMountTarget();
+    if (existing) return Promise.resolve(existing);
+    return new Promise((resolve, reject) => {
+      const startedAt = Date.now();
+      const timer = setInterval(() => {
+        const target = panelMountTarget();
+        if (target) {
+          clearInterval(timer);
+          resolve(target);
+          return;
+        }
+        if (Date.now() - startedAt > timeoutMs) {
+          clearInterval(timer);
+          reject(new Error("页面主体尚未加载完成"));
+        }
+      }, 100);
+    });
+  }
+
+  function mountPanel(target = panelMountTarget()) {
+    if (!target) return null;
     ensureStyle();
     let root = panel();
     if (!root) {
@@ -677,7 +1362,7 @@
       root.id = PANEL_ID;
       root.innerHTML = `
         <div class="codex-panel-head">
-          <div class="codex-title">技能 <span class="codex-updated">脚本更新：${SCRIPT_UPDATED_AT}</span></div>
+          <div class="codex-title">BD信息 <span class="codex-updated">更新：${SCRIPT_UPDATED_AT}</span></div>
           <div class="codex-actions">
             <button type="button" data-action="refresh">刷新</button>
             <button type="button" data-action="copy">复制</button>
@@ -691,31 +1376,24 @@
             <button type="button" data-lang="cn">简体</button>
             <button type="button" data-lang="tw">繁体</button>
           </div>
-          <div class="codex-control-group codex-sort-group">
-            <span class="codex-label">筛选</span>
-            <button type="button" data-filter="all">全部</button>
-            <button type="button" data-filter="active">主动</button>
-            <button type="button" data-filter="passive">被动</button>
-            <span class="codex-label" style="margin-left:8px;">排序</span>
-            <button type="button" data-sort="original">原序</button>
-            <button type="button" data-sort="type">类型</button>
-          </div>
         </div>
         <div class="codex-body"></div>
       `;
       root.addEventListener("click", onPanelClick);
     }
-    panelMountTarget().appendChild(root);
+    target.appendChild(root);
     return root;
+  }
+
+  async function ensurePanel() {
+    return mountPanel(await waitForPanelMountTarget());
   }
 
   function updateControls() {
     const root = panel();
     if (!root) return;
-    const summary = summarizeRows(lastRows);
     const char = currentModel ? modelChar(currentModel.data) : null;
-    const info = char ? ` | ${cleanText(char.name)} Lv${char.level || "-"} ${cleanText(char.class || "")}` : "";
-    root.querySelector(".codex-summary").textContent = `总技能 ${summary.total} | 主动 ${summary.active} | 被动 ${summary.passive}${summary.spirit ? ` | 精魂 ${summary.spirit}` : ""}${info}`;
+    root.querySelector(".codex-summary").textContent = char ? `${cleanText(char.name)} Lv${char.level || "-"} ${cleanText(char.class || "")}` : "";
     root.querySelectorAll("[data-lang]").forEach((button) => {
       button.classList.toggle("codex-active-control", button.dataset.lang === currentNameLang);
       button.disabled = nameLangState === "loading";
@@ -728,18 +1406,39 @@
     root.title = nameLangMessage;
   }
 
-  function renderRows() {
-    const root = mountPanel();
+  async function renderRows() {
+    const root = await ensurePanel();
     const body = root.querySelector(".codex-body");
     body.innerHTML = "";
+    updateControls();
+    renderItemSection(body, "装备/药剂", lastEquipment, false);
+    renderItemSection(body, "珠宝", lastJewels, true);
+    const skillSection = document.createElement("section");
+    skillSection.className = "codex-section";
+    const summary = summarizeRows(lastRows);
+    skillSection.innerHTML = `
+      <div class="codex-section-title">技能 <span>${visibleRows(lastRows).length} 个</span></div>
+      <div class="codex-skill-toolbar">
+        <div class="codex-skill-summary">总技能 ${summary.total} | 主动 ${summary.active} | 被动 ${summary.passive}${summary.spirit ? ` | 精魂 ${summary.spirit}` : ""}</div>
+        <div class="codex-skill-controls">
+          <span class="codex-label">筛选</span>
+          <button type="button" data-filter="all">全部</button>
+          <button type="button" data-filter="active">主动</button>
+          <button type="button" data-filter="passive">被动</button>
+          <span class="codex-label" style="margin-left:8px;">排序</span>
+          <button type="button" data-sort="original">原序</button>
+          <button type="button" data-sort="type">类型</button>
+        </div>
+      </div>
+    `;
+    body.appendChild(skillSection);
     updateControls();
     const rows = visibleRows(lastRows);
     if (!rows.length) {
       const empty = document.createElement("div");
       empty.className = "codex-skill-card";
       empty.textContent = "没有读取到技能数据。";
-      body.appendChild(empty);
-      return;
+      skillSection.appendChild(empty);
     }
     for (const row of rows) {
       const card = document.createElement("article");
@@ -751,9 +1450,9 @@
           <span class="codex-name"></span>
           <span class="codex-meta">Lv${row.level} / ${row.quality} / ${row.sockets}孔</span>
         </div>
-        <div class="codex-line codex-tags"><span class="codex-line-label">标签</span>${row.tags || "-"}</div>
-        ${row.requirements ? `<div class="codex-line codex-req"><span class="codex-line-label">需求</span>${row.requirements}</div>` : ""}
-        ${row.dpsRows.length ? `<div class="codex-line"><span class="codex-line-label">DPS</span>${row.dpsRows.map((dps) => `${cleanText(dps.name)} ${formatNumber(dps.dps || dps.dotDps)}`).join(" / ")}</div>` : ""}
+        <div class="codex-line codex-tags"><span class="codex-line-label">标签</span>${escapeHtml(localizedModText(row.tags || "-"))}</div>
+        ${row.requirements ? `<div class="codex-line codex-req"><span class="codex-line-label">需求</span>${escapeHtml(localizedModText(row.requirements))}</div>` : ""}
+        ${row.dpsRows.length ? `<div class="codex-line"><span class="codex-line-label">DPS</span>${escapeHtml(row.dpsRows.map((dps) => `${localizedName(dps.name)} ${formatNumber(dps.dps || dps.dotDps)}`).join(" / "))}</div>` : ""}
         <div class="codex-line"><span class="codex-line-label">已插入技能</span>${row.inserted.length} 个</div>
       `;
       card.querySelector(".codex-name").textContent = localizedName(row.name);
@@ -784,15 +1483,58 @@
             <td class="codex-level">${item.level !== "-" ? `Lv${item.level}` : "-"}</td>
             <td class="codex-quality">${item.quality || "-"}</td>
             <td class="codex-sockets">${item.sockets || "-"}</td>
-            <td class="codex-requirements">${item.requirements || "-"}</td>
+            <td class="codex-requirements">${escapeHtml(localizedModText(item.requirements || "-"))}</td>
           `;
           tr.querySelector(".codex-insert-name").textContent = localizedName(item.name);
           tbody.appendChild(tr);
         });
         card.appendChild(table);
       }
-      body.appendChild(card);
+      skillSection.appendChild(card);
     }
+  }
+
+  function renderItemSection(body, title, rows, isJewel) {
+    if (!rows.length) return;
+    const section = document.createElement("section");
+    section.className = "codex-section";
+    section.innerHTML = `<div class="codex-section-title">${title} <span>${rows.length} 个</span></div>`;
+    const table = document.createElement("table");
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th class="codex-index">#</th>
+          <th class="codex-item-slot">${isJewel ? "位置" : "部位"}</th>
+          <th>名称</th>
+          <th class="codex-item-rarity">稀有度</th>
+          <th class="codex-item-props">属性/需求</th>
+          <th class="codex-item-socketed">插槽物</th>
+          <th>词缀</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+    const tbody = table.querySelector("tbody");
+    rows.forEach((row, index) => {
+      const tr = document.createElement("tr");
+      const slot = isJewel ? (row.position || row.slot || "-") : row.slot;
+      const propertyItems = splitListText(row.properties).map(localizedModText);
+      const socketedHtml = renderCellList(row.socketed.map(localizedItemLabel), false);
+      tr.innerHTML = `
+        <td class="codex-index">${index + 1}</td>
+        <td class="codex-item-slot">${escapeHtml(slot)}</td>
+        <td class="codex-item-name"></td>
+        <td class="codex-item-rarity">${escapeHtml(localizedRarity(row.rarity))}</td>
+        <td class="codex-item-props">${renderCellList(propertyItems, false)}</td>
+        <td class="codex-item-socketed">${socketedHtml}</td>
+        <td class="codex-item-mods">${renderModGroups(row.mods)}</td>
+      `;
+      const status = itemStatusText(row);
+      tr.querySelector(".codex-item-name").textContent = `${localizedItemName(row)}${status ? ` (${status})` : ""}`;
+      tbody.appendChild(tr);
+    });
+    section.appendChild(table);
+    body.appendChild(section);
   }
 
   function updateRenderedLanguage() {
@@ -834,13 +1576,14 @@
   }
 
   async function refresh({ showLoading = Boolean(panel()) } = {}) {
-    const existingPanel = panel();
-    if (showLoading && existingPanel) {
-      existingPanel.querySelector(".codex-body").innerHTML = `<div class="codex-skill-card">正在读取 poe.ninja 技能数据...</div>`;
+    let existingPanel = panel();
+    if (showLoading) {
+      existingPanel = existingPanel || await ensurePanel();
+      existingPanel.querySelector(".codex-body").innerHTML = `<div class="codex-skill-card">正在读取 poe.ninja BD 数据...</div>`;
     }
     const route = currentRoute || parseCharacterLink(location.href);
     if (!route) {
-      const root = mountPanel();
+      const root = await ensurePanel();
       const body = root.querySelector(".codex-body");
       body.innerHTML = `<div class="codex-skill-card">当前页面没有识别到 poe.ninja POE2 角色链接。可在 Tampermonkey 菜单里设置 NinjaBD 镜像站。</div>`;
       return;
@@ -849,8 +1592,11 @@
     const data = await fetchLatestModel(route);
     const char = modelChar(data);
     lastRows = (char.skills || []).map(normalizeSkillGroup).filter((row) => row.name);
+    lastEquipment = normalizeEquipment(char);
+    lastJewels = normalizeJewels(char);
     lastText = currentCopyText();
-    renderRows();
+    await renderRows();
+    preloadNameMaps();
   }
 
   async function onPanelClick(event) {
@@ -864,12 +1610,12 @@
     }
     if (button.dataset.filter) {
       currentFilter = button.dataset.filter;
-      renderRows();
+      await renderRows();
       return;
     }
     if (button.dataset.sort) {
       currentSort = button.dataset.sort;
-      renderRows();
+      await renderRows();
       return;
     }
     if (button.dataset.action === "refresh") {
@@ -886,10 +1632,11 @@
   function start() {
     registerMenuCommands();
     if (!shouldActivate()) return;
-    refresh({ showLoading: false }).catch((error) => {
+    refresh({ showLoading: true }).catch((error) => {
       console.warn("POE2 NinjaBD增强读取失败", error);
-      const root = mountPanel();
-      root.querySelector(".codex-body").innerHTML = `<div class="codex-skill-card">读取失败：${cleanText(error?.message || error)}</div>`;
+      ensurePanel().then((root) => {
+        root.querySelector(".codex-body").innerHTML = `<div class="codex-skill-card">读取失败：${cleanText(error?.message || error)}</div>`;
+      }).catch(console.warn);
     });
     let lastHref = location.href;
     setInterval(() => {
@@ -902,3 +1649,4 @@
 
   start();
 })();
+
