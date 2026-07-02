@@ -2,10 +2,12 @@
 // @name         POE2 WeGameBD增强
 // @namespace    local.codex.wegame.poe2
 // @version      1.0.0
-// @updated      2026-06-28 13:48:37
+// @updated      2026-07-02 02:48:03
 // @description  在 WeGame 流放之路2 BD 分享页底部展示可复制的文字版技能信息
 // @author       维克牛
 // @license      MIT
+// @updateURL    https://gitee.com/aprilfool/Script/raw/main/Tampermonkey/POE2-WeGameBD-enhancer/POE2-WeGameBD-enhancer.user.js
+// @downloadURL  https://gitee.com/aprilfool/Script/raw/main/Tampermonkey/POE2-WeGameBD-enhancer/POE2-WeGameBD-enhancer.user.js
 // @match        https://www.wegame.com.cn/helper/poe2/*
 // @run-at       document-idle
 // @grant        GM_setClipboard
@@ -21,13 +23,18 @@
   const API_BASE = "https://www.wegame.com.cn/api/v1/wegame.pallas.poe2.Profile";
   const PANEL_ID = "codex-poe2-skill-text-panel";
   const STYLE_ID = "codex-poe2-skill-text-style";
-  const SCRIPT_UPDATED_AT = "2026-06-28 13:48:37";
+  const SCRIPT_UPDATED_AT = "2026-07-02 02:48:03";
+  const COLLAPSE_STORAGE_KEY = "codex-poe2-wegamebd-collapse-v1";
   const NAME_LANGS = ["cn", "tw", "us"];
   const NAME_LANG_LABELS = { cn: "简体", tw: "繁体", us: "EN" };
 
   let lastShareCode = "";
   let lastText = "";
   let lastRows = [];
+  let lastEquipment = [];
+  let lastJewels = [];
+  let lastTalent = null;
+  let lastBuildInfo = null;
   let mountWatcherStarted = false;
   let currentFilter = "all";
   let currentSort = "original";
@@ -38,12 +45,74 @@
   let nameLangMessage = "";
   let panelEventGuardStarted = false;
   let lastPanelScrollSnapshot = null;
+  let collapsedSections = readCollapsedSections();
 
   function cleanText(value) {
     return String(value ?? "")
       .replace(/\[([^|\]]+)\|([^\]]+)\]/g, "$2")
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "\"": "&quot;",
+      "'": "&#39;",
+    })[char]);
+  }
+
+  function readCollapsedSections() {
+    try {
+      const raw = localStorage.getItem(COLLAPSE_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeCollapsedSections() {
+    try {
+      localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify(collapsedSections));
+    } catch {
+      // localStorage may be blocked by browser privacy settings.
+    }
+  }
+
+  function isSectionCollapsed(key) {
+    return Boolean(key && collapsedSections[key]);
+  }
+
+  function setSectionCollapsed(key, collapsed) {
+    if (!key) return;
+    collapsedSections = { ...collapsedSections, [key]: Boolean(collapsed) };
+    writeCollapsedSections();
+  }
+
+  function applySectionCollapsed(section, key) {
+    const collapsed = isSectionCollapsed(key);
+    section.classList.toggle("codex-collapsed", collapsed);
+    const button = section.querySelector("[data-collapse-section]");
+    if (button) button.textContent = collapsed ? "展开" : "折叠";
+  }
+
+  function sectionTitleHtml(title, detail, collapseKey = "") {
+    const count = detail ? `<span class="codex-section-title-count">${escapeHtml(detail)}</span>` : "";
+    const action = collapseKey
+      ? `<button type="button" class="codex-collapse-button" data-collapse-section="${escapeHtml(collapseKey)}">${isSectionCollapsed(collapseKey) ? "展开" : "折叠"}</button>`
+      : "";
+    return `
+      <div class="codex-item-section-title">
+        <div class="codex-section-title-main">
+          <span class="codex-section-title-text">${escapeHtml(title)}</span>
+          ${count}
+          ${action}
+        </div>
+      </div>
+    `;
   }
 
   function normalizeNameKey(value) {
@@ -188,23 +257,34 @@
     return suffix ? `${name}(${suffix})` : name;
   }
 
+  function insertedRows(row) {
+    if (Array.isArray(row?.inserted)) return row.inserted;
+    return [
+      ...(row?.supports || []).map((support) => ({ ...support, rowType: support.rowType || "被动" })),
+      ...(row?.nestedActives || []).map((active) => ({ ...active, rowType: active.rowType || "主动" })),
+    ];
+  }
+
   function localizedRowText(row, index) {
     const lines = [];
     lines.push(`${index + 1}. ${localizedName(row.name)} | Lv${row.level} | ${row.quality} | ${row.sockets || "-"}孔`);
     lines.push(`   类型: ${row.skillType || "-"}`);
     if (row.tags) lines.push(`   标签: ${row.tags}`);
     if (row.requirements) lines.push(`   需求: ${row.requirements}`);
-    const tableRows = [
-      ...(row.supports || []).map((support) => ({ ...support, rowType: support.rowType || "被动" })),
-      ...(row.nestedActives || []).map((active) => ({ ...active, rowType: active.rowType || "主动" })),
-    ];
+    const tableRows = insertedRows(row);
     lines.push(`   已插入技能: ${tableRows.length ? tableRows.map((item) => `${item.rowType}:${localizedSupportText(item)}`).join(" / ") : "-"}`);
     return lines.join("\n");
   }
 
   function currentCopyText() {
-    if (!lastRows.length || currentNameLang === "cn") return lastText;
-    return lastRows.map((row, index) => localizedRowText(row, index)).join("\n\n");
+    if (!lastBuildInfo && !lastTalent && !lastEquipment.length && !lastJewels.length && (!lastRows.length || currentNameLang === "cn")) return lastText;
+    const parts = [];
+    if (lastBuildInfo) parts.push("【BD信息】\n" + formatBuildInfoText(lastBuildInfo));
+    if (lastEquipment.length) parts.push("【装备/药剂/护符】\n" + lastEquipment.map(formatItemText).join("\n\n"));
+    if (lastJewels.length) parts.push("【珠宝】\n" + lastJewels.map(formatItemText).join("\n\n"));
+    if (lastTalent) parts.push("【天赋/任务奖励】\n" + formatTalentText(lastTalent));
+    if (lastRows.length) parts.push("【技能】\n" + lastRows.map((row, index) => localizedRowText(row, index)).join("\n\n"));
+    return parts.filter(Boolean).join("\n\n");
   }
 
   function extractShareCode() {
@@ -341,6 +421,7 @@
 
     const supports = [];
     const nestedActives = [];
+    const inserted = [];
     for (const child of skill.socketedItems || []) {
       const childName = gemName(child);
       if (!childName) continue;
@@ -351,13 +432,15 @@
           childLevel ? `Lv${formatLevel(childLevel)}` : "",
           childQuality && childQuality !== "-" ? formatQuality(childQuality) : "",
         ].filter(Boolean).join(" ");
-        supports.push({
+        const supportRow = {
           name: childName,
           rowType: "被动",
           level: childLevel ? formatLevel(childLevel) : "-",
           quality: childQuality && childQuality !== "-" ? formatQuality(childQuality) : "-",
           text: suffix ? `${childName}(${suffix})` : childName,
-        });
+        };
+        supports.push(supportRow);
+        inserted.push(supportRow);
       } else {
         const childLevel = propValue(child, ["等级"]);
         const childQuality = propValue(child, ["品质"]);
@@ -373,6 +456,7 @@
         };
         childRow.text = `${childName}${childRow.level !== "-" ? ` Lv${childRow.level}` : ""} ${childRow.quality}${childSockets ? ` ${childSockets}孔` : ""}${childRow.requirements !== "-" ? ` 需求:${childRow.requirements}` : ""}`;
         nestedActives.push(childRow);
+        inserted.push(childRow);
       }
     }
 
@@ -382,7 +466,7 @@
     lines.push(`   类型: ${type.label}`);
     if (tags) lines.push(`   标签: ${tags}`);
     if (requirements) lines.push(`   需求: ${requirements}`);
-    const tableRows = [...supports, ...nestedActives];
+    const tableRows = inserted;
     lines.push(`   已插入技能: ${tableRows.length ? tableRows.map((item) => `${item.rowType}:${item.text || item.name}`).join(" / ") : "-"}`);
     return {
       name,
@@ -396,6 +480,7 @@
       skillTypeClass: type.className,
       supports,
       nestedActives,
+      inserted,
       text: lines.join("\n"),
     };
   }
@@ -428,6 +513,301 @@
       lines.push("");
     });
     return { text: lines.join("\n").trim(), rows };
+  }
+
+  function itemData(entry) {
+    return entry?.itemData || entry || {};
+  }
+
+  function itemName(entry) {
+    const item = itemData(entry);
+    return cleanText([item.name, item.typeLine || item.baseType].filter(Boolean).join(" ")) || cleanText(item.display_name || item.typeLine || item.baseType || item.name || "-");
+  }
+
+  function itemBaseType(entry) {
+    const item = itemData(entry);
+    return cleanText(item.typeLine || item.baseType || item.name || "");
+  }
+
+  function itemRarity(entry) {
+    const item = itemData(entry);
+    const map = {
+      0: "普通",
+      1: "魔法",
+      2: "稀有",
+      3: "传奇",
+      4: "宝石",
+      5: "通货",
+      9: "遗物",
+      Normal: "普通",
+      Magic: "魔法",
+      Rare: "稀有",
+      Unique: "传奇",
+      Gem: "宝石",
+      Currency: "通货",
+      Relic: "遗物",
+    };
+    const raw = item.rarity || item.frameTypeId || item.frameType;
+    return cleanText(map[raw] || raw || "-");
+  }
+
+  function itemSlot(entry, index) {
+    const item = itemData(entry);
+    const raw = cleanText(item.inventoryId || entry?.inventoryId || entry?.itemSlot || entry?.socket_name || "");
+    const map = {
+      BodyArmour: "胸甲",
+      Helm: "头盔",
+      Gloves: "手套",
+      Boots: "鞋子",
+      Belt: "腰带",
+      Amulet: "项链",
+      Ring: "戒指",
+      Ring2: "戒指2",
+      Ring3: "戒指3",
+      Weapon: "武器",
+      Weapon2: "武器2",
+      Offhand: "副手",
+      Offhand2: "副手2",
+      LifeFlask: "生命药剂",
+      ManaFlask: "魔力药剂",
+      Flask: "药剂",
+      Charm: "护符",
+      Charms: "护符",
+      PassiveJewels: "珠宝",
+    };
+    return map[raw] || raw || `#${index + 1}`;
+  }
+
+  function itemKind(entry, fallbackKind) {
+    const item = itemData(entry);
+    const raw = cleanText(item.inventoryId || entry?.inventoryId || entry?.itemSlot || "");
+    const label = cleanText(item.typeLine || item.baseType || item.name || "");
+    if (/Charm/i.test(raw) || /护符|咒符|\bCharm\b/i.test(label)) return "护符";
+    if (/Flask/i.test(raw) || /药剂|\bFlask\b/i.test(label)) return "药剂";
+    return fallbackKind;
+  }
+
+  function itemProperties(entry) {
+    const item = itemData(entry);
+    return (item.properties || [])
+      .map((field) => {
+        const name = cleanText(field?.name || "");
+        const value = fieldValueText(field);
+        return name && value ? `${name} ${value}` : name || value;
+      })
+      .filter(Boolean)
+      .filter((text) => !/Stack Size|堆叠数量|Limited to/i.test(text))
+      .join(" / ");
+  }
+
+  function cleanModText(value) {
+    return cleanText(value).replace(/<[^>]+>/g, "").replace(/\{|\}/g, "").trim();
+  }
+
+  function itemMods(entry) {
+    const item = itemData(entry);
+    const groups = [
+      ["隐式", item.implicitMods],
+      ["附魔/涂油", item.enchantMods],
+      ["显式", item.explicitMods],
+      ["破裂", item.fracturedMods],
+      ["工艺", item.craftedMods],
+      ["符文/镶嵌", item.runeMods],
+      ["污化", item.desecratedMods],
+      ["绑定", item.bondedMods],
+      ["授予技能", item.grantedSkills],
+    ];
+    return groups.map(([label, mods]) => ({
+      label,
+      lines: (mods || []).map((mod) => {
+        if (typeof mod === "string") return cleanModText(mod);
+        const name = cleanText(mod?.name || mod?.type || "");
+        const value = fieldValueText(mod);
+        return cleanModText([name, value].filter(Boolean).join(" "));
+      }).filter(Boolean),
+    })).filter((group) => group.lines.length);
+  }
+
+  function equipmentSortValue(row) {
+    const order = {
+      Weapon: 10,
+      Weapon2: 11,
+      Offhand: 20,
+      Offhand2: 21,
+      Helm: 30,
+      BodyArmour: 40,
+      Gloves: 50,
+      Boots: 60,
+      Amulet: 70,
+      Ring: 80,
+      Ring2: 81,
+      Ring3: 82,
+      Belt: 90,
+      LifeFlask: 100,
+      ManaFlask: 101,
+      Flask: 102,
+      Charm: 110,
+      Charms: 110,
+    };
+    return order[row.inventoryId] ?? 999;
+  }
+
+  function socketedItemNames(entry) {
+    const item = itemData(entry);
+    return (item.socketedItems || []).map((socketed) => cleanText(socketed.typeLine || socketed.baseType || socketed.name || "")).filter(Boolean);
+  }
+
+  function normalizeEquipmentItem(entry, index, kind) {
+    const item = itemData(entry);
+    const properties = itemProperties(entry);
+    const requirements = formatRequirements(item);
+    return {
+      originalIndex: index,
+      kind,
+      slot: itemSlot(entry, index),
+      inventoryId: cleanText(item.inventoryId || entry?.inventoryId || ""),
+      name: itemName(entry),
+      baseType: itemBaseType(entry),
+      rarity: itemRarity(entry),
+      properties: [properties, requirements ? `需求 ${requirements}` : ""].filter(Boolean).join(" / ") || "-",
+      mods: itemMods(entry),
+      socketed: socketedItemNames(entry),
+      corrupted: Boolean(item.corrupted),
+      ilvl: item.ilvl || "",
+      position: [item.x != null ? `x${item.x}` : "", item.y != null ? `y${item.y}` : ""].filter(Boolean).join(" / "),
+    };
+  }
+
+  function normalizeEquipments(payload) {
+    return (payload?.equipments || [])
+      .map((entry, index) => normalizeEquipmentItem(entry, index, itemKind(entry, "装备")))
+      .filter((item) => item.name && item.name !== "-")
+      .sort((a, b) => equipmentSortValue(a) - equipmentSortValue(b) || a.originalIndex - b.originalIndex);
+  }
+
+  function parseJewelData(payload) {
+    const raw = payload?.jewel_data;
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw !== "string" || !raw.trim()) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.warn("WeGame 珠宝数据解析失败", error);
+      return [];
+    }
+  }
+
+  function jewelRarity(value) {
+    const map = { 0: "普通", 1: "魔法", 2: "稀有", 3: "传奇" };
+    return map[value] || cleanText(value || "-");
+  }
+
+  function normalizeJewels(payload) {
+    return parseJewelData(payload).map((entry, index) => {
+      const jewel = entry?.jewel || {};
+      const mods = (jewel.mod_descriptions || []).map((group) => ({
+        label: Number(group?.type) === 2 ? "污化" : "显式",
+        lines: (group?.values_formats || group?.values || []).map((value) => cleanModText(value?.des || value)).filter(Boolean),
+      })).filter((group) => group.lines.length);
+      return {
+        originalIndex: index,
+        kind: "珠宝",
+        slot: cleanText(entry?.socket_name || entry?.socket_id || `#${index + 1}`),
+        inventoryId: cleanText(entry?.socket_id || ""),
+        name: cleanText([jewel.display_name, jewel.name].filter(Boolean).join(" ")) || "-",
+        baseType: cleanText(jewel.name || ""),
+        rarity: jewelRarity(jewel.rarity),
+        properties: "-",
+        mods,
+        socketed: [],
+        corrupted: mods.some((group) => group.label === "污化"),
+        ilvl: "",
+        position: cleanText(entry?.socket_id || ""),
+      };
+    }).filter((item) => item.name && item.name !== "-");
+  }
+
+  function splitListText(text) {
+    const clean = cleanText(text);
+    if (!clean || clean === "-") return [];
+    return clean.split(/\s+\/\s+/).map((part) => cleanText(part)).filter(Boolean);
+  }
+
+  function itemStatusText(row) {
+    const parts = [];
+    if (row.corrupted) parts.push("已腐化");
+    if (row.ilvl) parts.push(`物品等级 ${row.ilvl}`);
+    return parts.join(" / ");
+  }
+
+  function formatItemText(row, index) {
+    const lines = [];
+    const status = itemStatusText(row);
+    lines.push(`${index + 1}. [${row.kind}] ${row.slot} | ${localizedName(row.name)} | ${row.rarity}${status ? ` | ${status}` : ""}`);
+    const props = splitListText(row.properties);
+    if (props.length) {
+      lines.push("   属性/需求:");
+      props.forEach((prop) => lines.push(`     - ${prop}`));
+    }
+    if (row.socketed.length) {
+      lines.push("   插槽:");
+      row.socketed.forEach((name) => lines.push(`     - ${localizedName(name)}`));
+    }
+    for (const group of row.mods) {
+      lines.push(`   ${group.label}:`);
+      group.lines.forEach((mod, modIndex) => lines.push(`     ${modIndex + 1}. ${mod}`));
+    }
+    return lines.join("\n");
+  }
+
+  function normalizeBuildInfo(summaryPayload, role) {
+    const title = cleanText(summaryPayload?.summary_title || "");
+    const timeBd = cleanText(summaryPayload?.time_bd || "");
+    const roleTitle = [
+      cleanText(role?.name),
+      role?.level ? `Lv${role.level}` : "",
+      cleanText(role?.class_name || role?.class),
+    ].filter(Boolean).join(" ");
+    if (!title && !timeBd && !roleTitle) return null;
+    return { title, timeBd, roleTitle };
+  }
+
+  function formatBuildInfoText(info) {
+    return [
+      info.roleTitle ? `角色: ${info.roleTitle}` : "",
+      info.title ? `BD标题: ${info.title}` : "",
+      info.timeBd ? `BD时间: ${info.timeBd}` : "",
+      `链接: ${location.href}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  function normalizeTalent(talentPayload, profilePayload) {
+    const tree = talentPayload?.talent_tree || {};
+    const hashes = Array.isArray(tree.hashes) ? tree.hashes : [];
+    const specialisations = tree.specialisations || {};
+    const set1 = Array.isArray(specialisations.set1) ? specialisations.set1 : [];
+    const set2 = Array.isArray(specialisations.set2) ? specialisations.set2 : [];
+    const questStats = Array.isArray(tree.quest_stats) ? tree.quest_stats.map(cleanModText).filter(Boolean) : [];
+    const jewelData = tree.jewel_data && typeof tree.jewel_data === "object" ? Object.keys(tree.jewel_data) : [];
+    const assigned = Number(profilePayload?.assigned_talent_count || 0) || hashes.length || 0;
+    const total = Number(profilePayload?.total_talent_count || 0) || "";
+    if (!assigned && !total && !questStats.length && !set1.length && !set2.length && !jewelData.length) return null;
+    return { assigned, total, set1Count: set1.length, set2Count: set2.length, jewelSocketCount: jewelData.length, questStats };
+  }
+
+  function formatTalentText(talent) {
+    const lines = [];
+    if (talent.total) lines.push(`天赋点: ${talent.assigned}/${talent.total}`);
+    else if (talent.assigned) lines.push(`天赋点: ${talent.assigned}`);
+    lines.push(`武器专精 Set1: ${talent.set1Count || 0}`);
+    lines.push(`武器专精 Set2: ${talent.set2Count || 0}`);
+    if (talent.jewelSocketCount) lines.push(`天赋珠宝槽: ${talent.jewelSocketCount}`);
+    if (talent.questStats?.length) {
+      lines.push("任务奖励:");
+      talent.questStats.forEach((stat, index) => lines.push(`  ${index + 1}. ${stat}`));
+    }
+    return lines.join("\n");
   }
 
   function domFallbackText() {
@@ -557,6 +937,32 @@
         border-top: 0;
         background: rgba(10, 10, 9, 0.84);
       }
+      #${PANEL_ID} .codex-skill-controls.codex-global-controls {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+      }
+      #${PANEL_ID} .codex-skill-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: 0 0 10px;
+        padding: 8px 10px;
+        border: 1px solid rgba(150, 127, 82, 0.35);
+        background: rgba(10, 10, 9, 0.42);
+      }
+      #${PANEL_ID} .codex-skill-toolbar .codex-skill-controls {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        flex-wrap: wrap;
+        padding: 0;
+        border: 0;
+        background: transparent;
+      }
       #${PANEL_ID} .codex-skill-summary {
         color: #d4c79d;
         font-size: 13px;
@@ -598,8 +1004,19 @@
         margin: 0 0 10px;
         padding: 11px 16px 10px;
         border-radius: 4px;
+        border: 1px solid rgba(159, 179, 198, 0.12);
         background: #24313d;
         color: #d9e1e8;
+      }
+      #${PANEL_ID} .codex-skill-card.codex-type-active {
+        box-shadow: inset 0 3px 0 rgba(217, 179, 95, 0.70);
+      }
+      #${PANEL_ID} .codex-skill-card.codex-type-spirit,
+      #${PANEL_ID} .codex-skill-card.codex-type-passive {
+        box-shadow: inset 0 3px 0 rgba(117, 197, 142, 0.70);
+      }
+      #${PANEL_ID} .codex-skill-card.codex-type-granted {
+        box-shadow: inset 0 3px 0 rgba(114, 168, 223, 0.70);
       }
       #${PANEL_ID} .codex-skill-top {
         display: flex;
@@ -679,6 +1096,116 @@
         color: #91a1b0;
         font-weight: 400;
         background: rgba(255, 255, 255, 0.035);
+      }
+      #${PANEL_ID} .codex-item-section {
+        margin: 0 0 18px;
+        padding: 0 12px 12px;
+        border: 1px solid rgba(150, 127, 82, 0.30);
+        border-left: 4px solid rgba(217, 179, 95, 0.92);
+        background: rgba(8, 8, 7, 0.34);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+      }
+      #${PANEL_ID} .codex-item-section-title {
+        display: flex;
+        align-items: baseline;
+        justify-content: flex-start;
+        gap: 10px;
+        margin: 0 -12px 12px;
+        padding: 9px 12px 9px 10px;
+        border-bottom: 1px solid rgba(150, 127, 82, 0.28);
+        background: rgba(150, 127, 82, 0.14);
+        color: #d4c79d;
+        font-size: 17px;
+        font-weight: 700;
+      }
+      #${PANEL_ID} .codex-section-title-main {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+      #${PANEL_ID} .codex-section-title-text {
+        color: #f0d99a;
+        font-size: 17px;
+        font-weight: 700;
+      }
+      #${PANEL_ID} .codex-item-section-title span {
+        color: #8f9aa5;
+        font-size: 12px;
+        font-weight: 400;
+      }
+      #${PANEL_ID} .codex-collapse-button {
+        flex: none;
+        margin-left: 2px;
+        padding: 2px 8px;
+        font-size: 12px;
+        line-height: 1.5;
+        background: rgba(150, 127, 82, 0.18);
+        border-color: rgba(217, 179, 95, 0.42);
+      }
+      #${PANEL_ID} .codex-item-section.codex-collapsed > :not(.codex-item-section-title) {
+        display: none !important;
+      }
+      #${PANEL_ID} .codex-item-section.codex-collapsed {
+        padding-bottom: 0;
+      }
+      #${PANEL_ID} .codex-item-section.codex-collapsed .codex-item-section-title {
+        margin-bottom: 0;
+        border-bottom: 0;
+      }
+      #${PANEL_ID} .codex-item-table {
+        width: 100%;
+        margin: 0;
+        border-collapse: collapse;
+        table-layout: fixed;
+        color: #c7d1dc;
+        font-size: 13px;
+      }
+      #${PANEL_ID} .codex-item-table th,
+      #${PANEL_ID} .codex-item-table td {
+        border: 1px solid rgba(159, 179, 198, 0.16);
+        padding: 6px 8px;
+        text-align: left;
+        vertical-align: top;
+        word-break: break-word;
+      }
+      #${PANEL_ID} .codex-item-table th {
+        color: #91a1b0;
+        font-weight: 400;
+        background: rgba(255, 255, 255, 0.035);
+      }
+      #${PANEL_ID} .codex-item-index {
+        width: 42px;
+        text-align: center !important;
+      }
+      #${PANEL_ID} .codex-item-slot {
+        width: 92px;
+      }
+      #${PANEL_ID} .codex-item-rarity {
+        width: 72px;
+      }
+      #${PANEL_ID} .codex-item-props,
+      #${PANEL_ID} .codex-item-socketed {
+        width: 180px;
+      }
+      #${PANEL_ID} .codex-cell-list {
+        display: grid;
+        gap: 3px;
+      }
+      #${PANEL_ID} .codex-list-row {
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr);
+        gap: 4px;
+      }
+      #${PANEL_ID} .codex-list-marker,
+      #${PANEL_ID} .codex-mod-label {
+        color: #d9b35f;
+      }
+      #${PANEL_ID} .codex-mod-group + .codex-mod-group {
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px solid rgba(159, 179, 198, 0.12);
       }
       #${PANEL_ID} .codex-support-index {
         width: 46px;
@@ -766,14 +1293,14 @@
         color: #b9aa88;
       }
       #${PANEL_ID}.codex-skill-panel-mounted .codex-skill-card.codex-type-active {
-        border-left: 4px solid #d9b35f;
+        box-shadow: inset 0 3px 0 rgba(217, 179, 95, 0.70);
       }
       #${PANEL_ID}.codex-skill-panel-mounted .codex-skill-card.codex-type-spirit,
       #${PANEL_ID}.codex-skill-panel-mounted .codex-skill-card.codex-type-passive {
-        border-left: 4px solid #75c58e;
+        box-shadow: inset 0 3px 0 rgba(117, 197, 142, 0.70);
       }
       #${PANEL_ID}.codex-skill-panel-mounted .codex-skill-card.codex-type-granted {
-        border-left: 4px solid #72a8df;
+        box-shadow: inset 0 3px 0 rgba(114, 168, 223, 0.70);
       }
       #${PANEL_ID}.codex-skill-panel-mounted .codex-skill-name {
         color: #d4c79d;
@@ -786,11 +1313,17 @@
       #${PANEL_ID}.codex-skill-panel-mounted .codex-support-table {
         color: #a99d7d;
       }
+      #${PANEL_ID}.codex-skill-panel-mounted .codex-item-table {
+        color: #a99d7d;
+      }
       #${PANEL_ID}.codex-skill-panel-mounted .codex-support-table th,
-      #${PANEL_ID}.codex-skill-panel-mounted .codex-support-table td {
+      #${PANEL_ID}.codex-skill-panel-mounted .codex-support-table td,
+      #${PANEL_ID}.codex-skill-panel-mounted .codex-item-table th,
+      #${PANEL_ID}.codex-skill-panel-mounted .codex-item-table td {
         border-color: rgba(150, 127, 82, 0.28);
       }
-      #${PANEL_ID}.codex-skill-panel-mounted .codex-support-table th {
+      #${PANEL_ID}.codex-skill-panel-mounted .codex-support-table th,
+      #${PANEL_ID}.codex-skill-panel-mounted .codex-item-table th {
         color: #d4c79d;
         background: rgba(150, 127, 82, 0.08);
       }
@@ -990,6 +1523,13 @@
 
   async function handlePanelButton(button) {
     const panel = document.getElementById(PANEL_ID);
+    if (button.dataset.collapseSection) {
+      const key = button.dataset.collapseSection;
+      setSectionCollapsed(key, !isSectionCollapsed(key));
+      button.blur();
+      await preserveScroll(() => renderRowsIntoPanel(panel));
+      return;
+    }
     if (button.dataset.nameLang) {
       currentNameLang = button.dataset.nameLang;
       button.blur();
@@ -1069,22 +1609,7 @@
 
   function updateRenderedLanguage(panel = document.getElementById(PANEL_ID)) {
     if (!panel) return;
-    const rowsByIndex = new Map(lastRows.map((row) => [String(row.originalIndex), row]));
-    panel.querySelectorAll(".codex-skill-card[data-row-index]").forEach((card) => {
-      const row = rowsByIndex.get(card.dataset.rowIndex);
-      if (!row) return;
-      const nameEl = card.querySelector(".codex-skill-name");
-      if (nameEl) nameEl.textContent = localizedName(row.name);
-      const tableRows = [
-        ...(row.supports || []).map((support) => ({ ...support, rowType: support.rowType || "被动" })),
-        ...(row.nestedActives || []).map((active) => ({ ...active, rowType: active.rowType || "主动" })),
-      ];
-      card.querySelectorAll(".codex-support-table tbody tr").forEach((tr, supportIndex) => {
-        const supportNameEl = tr.querySelector(".codex-support-name");
-        if (supportNameEl) supportNameEl.textContent = localizedName(tableRows[supportIndex]?.name || "-");
-      });
-    });
-    updateControls(panel, lastRows, visibleRows(lastRows));
+    renderRowsIntoPanel(panel);
   }
 
   function startMountWatcher() {
@@ -1099,19 +1624,163 @@
     }, 1500);
   }
 
+  function renderCellList(items) {
+    const list = (items || []).map(cleanText).filter(Boolean);
+    if (!list.length) return "-";
+    return `<div class="codex-cell-list">${list.map((item, index) => `
+      <div class="codex-list-row">
+        <span class="codex-list-marker">${index + 1}.</span>
+        <span>${escapeHtml(item)}</span>
+      </div>
+    `).join("")}</div>`;
+  }
+
+  function renderModGroups(groups) {
+    if (!groups?.length) return "-";
+    return groups.map((group) => `
+      <div class="codex-mod-group">
+        <div class="codex-mod-label">${escapeHtml(group.label)}</div>
+        ${renderCellList(group.lines)}
+      </div>
+    `).join("");
+  }
+
+  function renderItemSection(body, title, rows, isJewel = false, collapseKey = "") {
+    if (!rows.length) return;
+    const section = document.createElement("section");
+    section.className = "codex-item-section";
+    section.innerHTML = sectionTitleHtml(title, `${rows.length} 个`, collapseKey);
+    const table = document.createElement("table");
+    table.className = "codex-item-table";
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th class="codex-item-index">#</th>
+          <th class="codex-item-slot">${isJewel ? "位置" : "部位"}</th>
+          <th>名称</th>
+          <th class="codex-item-rarity">稀有度</th>
+          <th class="codex-item-props">属性/需求</th>
+          <th class="codex-item-socketed">插槽物</th>
+          <th>词缀</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+    const tbody = table.querySelector("tbody");
+    rows.forEach((row, index) => {
+      const status = itemStatusText(row);
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="codex-item-index">${index + 1}</td>
+        <td class="codex-item-slot">${escapeHtml(isJewel ? (row.position || row.slot || "-") : row.slot)}</td>
+        <td>${escapeHtml(`${localizedName(row.name)}${status ? ` (${status})` : ""}`)}</td>
+        <td class="codex-item-rarity">${escapeHtml(row.rarity || "-")}</td>
+        <td class="codex-item-props">${renderCellList(splitListText(row.properties))}</td>
+        <td class="codex-item-socketed">${renderCellList(row.socketed.map(localizedName))}</td>
+        <td>${renderModGroups(row.mods)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+    section.appendChild(table);
+    applySectionCollapsed(section, collapseKey);
+    body.appendChild(section);
+  }
+
+  function renderBuildInfoSection(body) {
+    if (!lastBuildInfo) return;
+    const section = document.createElement("section");
+    section.className = "codex-item-section";
+    const rows = [
+      ["角色", lastBuildInfo.roleTitle],
+      ["BD标题", lastBuildInfo.title],
+      ["BD时间", lastBuildInfo.timeBd],
+    ].filter(([, value]) => value);
+    section.innerHTML = `
+      ${sectionTitleHtml("基本信息", `${rows.length} 项`)}
+      <table class="codex-item-table">
+        <tbody>
+          ${rows.map(([label, value]) => `
+            <tr>
+              <th class="codex-item-slot">${escapeHtml(label)}</th>
+              <td>${escapeHtml(value)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+    body.appendChild(section);
+  }
+
+  function renderTalentSection(body) {
+    if (!lastTalent) return;
+    const section = document.createElement("section");
+    section.className = "codex-item-section";
+    const summary = [
+      lastTalent.total ? `天赋点 ${lastTalent.assigned}/${lastTalent.total}` : (lastTalent.assigned ? `天赋点 ${lastTalent.assigned}` : ""),
+      `武器专精 Set1 ${lastTalent.set1Count || 0}`,
+      `Set2 ${lastTalent.set2Count || 0}`,
+      lastTalent.jewelSocketCount ? `天赋珠宝槽 ${lastTalent.jewelSocketCount}` : "",
+    ].filter(Boolean).join(" | ");
+    section.innerHTML = `
+      ${sectionTitleHtml("天赋/任务奖励", summary || "-", "talent")}
+      <table class="codex-item-table">
+        <tbody>
+          <tr>
+            <th class="codex-item-slot">概览</th>
+            <td>${escapeHtml(summary || "-")}</td>
+          </tr>
+          <tr>
+            <th class="codex-item-slot">任务奖励</th>
+            <td>${renderCellList(lastTalent.questStats || [])}</td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+    applySectionCollapsed(section, "talent");
+    body.appendChild(section);
+  }
+
+  function renderSkillSection(body, rowsToRender) {
+    const section = document.createElement("section");
+    section.className = "codex-item-section codex-skill-section";
+    const summary = summarizeRows(lastRows);
+    section.innerHTML = `
+      ${sectionTitleHtml("技能", `${rowsToRender.length} 个`, "skills")}
+      <div class="codex-skill-toolbar">
+        <div class="codex-skill-summary">总技能 ${summary.total} | 主动 ${summary.active} | 被动 ${summary.passive}${summary.spirit ? ` | 精魂 ${summary.spirit}` : ""}</div>
+        <div class="codex-skill-controls">
+          <span class="codex-control-label">筛选</span>
+          <button type="button" data-filter="all">全部</button>
+          <button type="button" data-filter="active">主动</button>
+          <button type="button" data-filter="passive">被动</button>
+          <span class="codex-control-label" style="margin-left:8px;">排序</span>
+          <button type="button" data-sort="original">原序</button>
+          <button type="button" data-sort="type">类型</button>
+        </div>
+      </div>
+    `;
+    body.appendChild(section);
+    applySectionCollapsed(section, "skills");
+    return section;
+  }
 
   function renderRowsIntoPanel(panel) {
     const body = panel.querySelector(".codex-skill-body");
     if (!body) return;
     body.innerHTML = "";
     const rowsToRender = visibleRows(lastRows);
+    renderBuildInfoSection(body);
+    renderItemSection(body, "装备/药剂/护符", lastEquipment, false, "equipment");
+    renderItemSection(body, "珠宝", lastJewels, true, "jewels");
+    renderTalentSection(body);
+    const skillSection = renderSkillSection(body, rowsToRender);
     updateControls(panel, lastRows, rowsToRender);
     if (lastRows.length) {
       if (!rowsToRender.length) {
         const card = document.createElement("div");
         card.className = "codex-skill-card";
         card.textContent = "当前筛选没有匹配技能。";
-        body.appendChild(card);
+        skillSection.appendChild(card);
       }
       for (const row of rowsToRender) {
         const card = document.createElement("div");
@@ -1144,10 +1813,7 @@
           requirements.remove();
         }
         const supports = card.querySelector(".codex-skill-supports");
-        const tableRows = [
-          ...row.supports.map((support) => ({ ...support, rowType: support.rowType || "被动" })),
-          ...row.nestedActives.map((active) => ({ ...active, rowType: active.rowType || "主动" })),
-        ];
+        const tableRows = insertedRows(row);
         supports.innerHTML = `<span class="codex-skill-label">已插入技能</span>${tableRows.length} 个`;
         if (tableRows.length) {
           const table = document.createElement("table");
@@ -1195,7 +1861,7 @@
         }
         const nested = card.querySelector(".codex-skill-nested");
         nested.remove();
-        body.appendChild(card);
+        skillSection.appendChild(card);
       }
     } else {
       const card = document.createElement("div");
@@ -1204,17 +1870,27 @@
       pre.className = "codex-skill-plain";
       pre.textContent = lastText || "";
       card.appendChild(pre);
-      body.appendChild(card);
+      skillSection.appendChild(card);
     }
     panel.querySelector(".codex-skill-status").textContent = "";
-  }  function renderPanel(result, status) {
+  }
+
+  function renderPanel(result, status) {
     ensureStyle();
     if (typeof result === "string") {
       lastText = result || "";
       lastRows = [];
+      lastEquipment = [];
+      lastJewels = [];
+      lastTalent = null;
+      lastBuildInfo = null;
     } else {
       lastText = result?.text || "";
       lastRows = result?.rows || [];
+      lastEquipment = result?.equipment || [];
+      lastJewels = result?.jewels || [];
+      lastTalent = result?.talent || null;
+      lastBuildInfo = result?.buildInfo || null;
     }
 
     let panel = document.getElementById(PANEL_ID);
@@ -1223,30 +1899,18 @@
       panel.id = PANEL_ID;
       panel.innerHTML = `
         <div class="codex-skill-header">
-          <div class="codex-skill-title">技能 <span class="codex-skill-updated">脚本更新：${SCRIPT_UPDATED_AT}</span></div>
+          <div class="codex-skill-title">BD信息 <span class="codex-skill-updated">脚本更新：${SCRIPT_UPDATED_AT}</span></div>
           <div class="codex-skill-actions">
             <button type="button" data-action="refresh">刷新</button>
             <button type="button" data-action="copy">复制</button>
           </div>
         </div>
-        <div class="codex-skill-controls">
-          <div class="codex-skill-summary"></div>
+        <div class="codex-skill-controls codex-global-controls">
           <div class="codex-control-group codex-lang-group">
             <span class="codex-control-label">语言</span>
             <button type="button" data-name-lang="cn">简体</button>
             <button type="button" data-name-lang="tw">繁体</button>
             <button type="button" data-name-lang="us">EN</button>
-          </div>
-          <div class="codex-control-group">
-            <span class="codex-control-label">筛选</span>
-            <button type="button" data-filter="all">全部</button>
-            <button type="button" data-filter="active">主动</button>
-            <button type="button" data-filter="passive">被动</button>
-          </div>
-          <div class="codex-control-group codex-sort-group">
-            <span class="codex-control-label">排序</span>
-            <button type="button" data-sort="original">原序</button>
-            <button type="button" data-sort="type">类型</button>
           </div>
         </div>
         <div class="codex-skill-body"></div>
@@ -1280,13 +1944,30 @@
       return;
     }
 
-    renderPanel(lastText || "正在读取技能接口...", "读取中");
+    renderPanel(lastText || "正在读取 BD 数据...", "读取中");
 
     try {
       const roleInfo = await postJson("GetRoleInfo", roleBody(shareCode));
       const role = roleInfo?.role || {};
-      const skills = await postJson("GetSkills", roleBody(shareCode, role));
-      renderPanel(formatSkills(skills, role), "接口数据已更新");
+      const body = roleBody(shareCode, role);
+      const [skillsResult, equipmentsResult, jewelsResult, talentResult, profileResult, summaryResult] = await Promise.allSettled([
+        postJson("GetSkills", body),
+        postJson("GetEquipments", body),
+        postJson("GetJewels", body),
+        postJson("GetTalentTree", body),
+        postJson("GetRoleProfile", body),
+        postJson("GetRoleSummary", body),
+      ]);
+      if (skillsResult.status !== "fulfilled") throw skillsResult.reason;
+      const formatted = formatSkills(skillsResult.value, role);
+      formatted.equipment = equipmentsResult.status === "fulfilled" ? normalizeEquipments(equipmentsResult.value) : [];
+      formatted.jewels = jewelsResult.status === "fulfilled" ? normalizeJewels(jewelsResult.value) : [];
+      formatted.talent = normalizeTalent(
+        talentResult.status === "fulfilled" ? talentResult.value : null,
+        profileResult.status === "fulfilled" ? profileResult.value : null
+      );
+      formatted.buildInfo = normalizeBuildInfo(summaryResult.status === "fulfilled" ? summaryResult.value : null, role);
+      renderPanel(formatted, "BD数据已更新");
     } catch (error) {
       const fallback = domFallbackText();
       renderPanel(
