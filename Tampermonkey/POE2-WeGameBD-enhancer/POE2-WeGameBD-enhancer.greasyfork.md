@@ -4,6 +4,13 @@
 
 ## 功能
 
+## 安装入口
+
+- 国际用户可从 GreasyFork 或 GitHub 安装。
+- 国内用户如果打不开 GreasyFork / GitHub，可以从 Gitee 镜像安装：
+  `https://gitee.com/aprilfool/Script/raw/main/Tampermonkey/POE2-WeGameBD-enhancer/POE2-WeGameBD-enhancer.user.js`
+- 从 Gitee 安装的版本会优先使用 Gitee 地址检查更新，后续更新更适合国内网络环境。
+
 ### 技能表格化展示
 
 - 在 BD 分享页技能区域下方插入「技能」面板。

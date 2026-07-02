@@ -2,10 +2,12 @@
 // @name         POE2 NinjaBD增强
 // @namespace    local.codex.ninja.poe2
 // @version      1.0
-// @updated      2026-07-01 00:57:48
+// @updated      2026-07-01 15:03:59
 // @description  在 poe.ninja POE2 BD 页面底部展示可复制的技能表格，并支持技能名称语言切换
 // @author       维克牛
 // @license      MIT
+// @updateURL    https://gitee.com/aprilfool/Script/raw/main/Tampermonkey/POE2-NinjaBD-enhancer/POE2-NinjaBD-enhancer.user.js
+// @downloadURL  https://gitee.com/aprilfool/Script/raw/main/Tampermonkey/POE2-NinjaBD-enhancer/POE2-NinjaBD-enhancer.user.js
 // @match        *://*/poe2/builds/*
 // @match        *://*/poe2/profile/*/*/character/*
 // @run-at       document-idle
@@ -35,11 +37,12 @@
 
   const API_ROOT = "https://poe.ninja/poe2/api/profile/characters";
   const STYLE_ID = "codex-poe2-ninja-skill-style";
-  const SCRIPT_UPDATED_AT = "2026-07-01 00:57:48";
+  const SCRIPT_UPDATED_AT = "2026-07-01 15:03:59";
   const DEFAULT_HOSTS = ["poe.ninja", "www.poe.ninja", "poe.show", "www.poe.show", "ninja.710421059.xyz"];
   const MIRROR_HOSTS_KEY = "codex_poe2_ninja_mirror_hosts";
   const NAME_MAP_CACHE_KEY = "codex_poe2_ninja_name_maps_v1";
   const DIRECT_NAME_CACHE_KEY = "codex_poe2_ninja_direct_names_v1";
+  const COLLAPSE_STORAGE_KEY = "codex_poe2_ninjabd_collapse_v1";
   const NAME_MAP_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const NAME_LANGS = ["us", "cn", "tw"];
   const NAME_LANG_LABELS = { us: "EN", cn: "简体", tw: "繁体" };
@@ -58,6 +61,7 @@
   let poe2dbNameMaps = null;
   let poe2dbNameMapsPromise = null;
   let directNameMaps = null;
+  let collapsedSections = gmGet(COLLAPSE_STORAGE_KEY, {});
 
   function cleanText(value) {
     return String(value ?? "")
@@ -116,6 +120,35 @@
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch (_) {}
+  }
+
+  function isSectionCollapsed(key) {
+    return Boolean(key && collapsedSections?.[key]);
+  }
+
+  function setSectionCollapsed(key, collapsed) {
+    if (!key) return;
+    collapsedSections = { ...(collapsedSections || {}), [key]: Boolean(collapsed) };
+    gmSet(COLLAPSE_STORAGE_KEY, collapsedSections);
+  }
+
+  function applySectionCollapsed(section, key) {
+    const collapsed = isSectionCollapsed(key);
+    section.classList.toggle("codex-collapsed", collapsed);
+    const button = section.querySelector("[data-collapse-section]");
+    if (button) button.textContent = collapsed ? "展开" : "折叠";
+  }
+
+  function sectionTitleHtml(title, detail, key = "") {
+    return `
+      <div class="codex-section-title">
+        <div class="codex-section-title-main">
+          <span class="codex-section-title-text">${escapeHtml(title)}</span>
+          <span class="codex-section-title-count">${escapeHtml(detail || "")}</span>
+          ${key ? `<button type="button" class="codex-collapse-button" data-collapse-section="${escapeHtml(key)}">${isSectionCollapsed(key) ? "展开" : "折叠"}</button>` : ""}
+        </div>
+      </div>
+    `;
   }
 
   function mirrorHosts() {
@@ -752,8 +785,8 @@
       LifeFlask: "生命药剂",
       ManaFlask: "魔力药剂",
       Flask: "药剂",
-      Charm: "咒符",
-      Charms: "咒符",
+      Charm: "护符",
+      Charms: "护符",
       PassiveJewels: "珠宝",
     };
     return map[raw] || raw || `#${index + 1}`;
@@ -836,9 +869,18 @@
     };
   }
 
+  function itemKind(entry, fallbackKind) {
+    const item = itemData(entry);
+    const raw = cleanText(item.inventoryId || entry?.inventoryId || entry?.itemSlot || "");
+    const label = cleanText(item.typeLine || item.baseType || item.name || "");
+    if (/Charm/i.test(raw) || /\bCharm\b/i.test(label)) return "护符";
+    if (/Flask/i.test(raw) || /\bFlask\b/i.test(label)) return "药剂";
+    return fallbackKind;
+  }
+
   function normalizeEquipment(char) {
     const equipment = (char.items || []).map((entry, index) => normalizeItem(entry, index, "装备"));
-    const flasks = (char.flasks || []).map((entry, index) => normalizeItem(entry, index, "药剂"));
+    const flasks = (char.flasks || []).map((entry, index) => normalizeItem(entry, index, itemKind(entry, "药剂")));
     return [...equipment, ...flasks]
       .filter((item) => item.name && item.name !== "-")
       .sort((a, b) => equipmentSortValue(a) - equipmentSortValue(b) || a.originalIndex - b.originalIndex);
@@ -901,10 +943,49 @@
     return lines.join("\n");
   }
 
+  function normalizeTalent(char) {
+    const passiveCounts = char?.passiveCounts || {};
+    const passives = Array.isArray(char?.passiveSelection) ? char.passiveSelection : [];
+    const set1 = Array.isArray(char?.passiveSelectionSet1) ? char.passiveSelectionSet1 : [];
+    const set2 = Array.isArray(char?.passiveSelectionSet2) ? char.passiveSelectionSet2 : [];
+    const questStats = Array.isArray(char?.questStats) ? char.questStats.map(cleanText).filter(Boolean) : [];
+    const keystones = Array.isArray(char?.keystones) ? char.keystones.map(cleanText).filter(Boolean) : [];
+    const treeName = cleanText(char?.passiveTreeName || "");
+    const total = Number(passiveCounts.passives || 0) || passives.length || 0;
+    const ascendancy = Number(passiveCounts.ascendancy || 0) || 0;
+    const anoints = Number(passiveCounts.anoints || 0) || 0;
+    const bonusPassives = Number(passiveCounts.bonusPassives || 0) || 0;
+    if (!total && !ascendancy && !set1.length && !set2.length && !questStats.length && !keystones.length && !treeName) return null;
+    return { total, ascendancy, anoints, bonusPassives, set1Count: set1.length, set2Count: set2.length, questStats, keystones, treeName };
+  }
+
+  function formatTalentText(talent) {
+    const lines = [];
+    if (talent.treeName) lines.push(`天赋树: ${talent.treeName}`);
+    if (talent.total) lines.push(`天赋点: ${talent.total}`);
+    lines.push(`升华点: ${talent.ascendancy || 0}`);
+    if (talent.anoints) lines.push(`涂油/配置: ${talent.anoints}`);
+    if (talent.bonusPassives) lines.push(`额外天赋: ${talent.bonusPassives}`);
+    lines.push(`武器专精 Set1: ${talent.set1Count || 0}`);
+    lines.push(`武器专精 Set2: ${talent.set2Count || 0}`);
+    if (talent.keystones?.length) {
+      lines.push("关键天赋:");
+      talent.keystones.forEach((name, index) => lines.push(`  ${index + 1}. ${localizedName(name)}`));
+    }
+    if (talent.questStats?.length) {
+      lines.push("任务奖励:");
+      talent.questStats.forEach((stat, index) => lines.push(`  ${index + 1}. ${localizedModText(stat)}`));
+    }
+    return lines.join("\n");
+  }
+
   function currentCopyText() {
     const parts = [];
-    if (lastEquipment.length) parts.push("【装备/药剂】\n" + lastEquipment.map(formatItemText).join("\n\n"));
+    const char = currentModel ? modelChar(currentModel.data) : null;
+    const talent = normalizeTalent(char);
+    if (lastEquipment.length) parts.push("【装备/药剂/护符】\n" + lastEquipment.map(formatItemText).join("\n\n"));
     if (lastJewels.length) parts.push("【珠宝】\n" + lastJewels.map(formatItemText).join("\n\n"));
+    if (talent) parts.push("【天赋/任务奖励】\n" + formatTalentText(talent));
     parts.push("【技能】\n" + visibleRows(lastRows).map((row, index) => formatRowText(row, index)).join("\n\n"));
     return parts.filter(Boolean).join("\n\n");
   }
@@ -933,7 +1014,7 @@
       .replace(/\bMana Flask\b/g, "魔力药剂")
       .replace(/\bLife Flask\b/g, "生命药剂")
       .replace(/\bFlask\b/g, "药剂")
-      .replace(/\bCharm\b/g, "咒符")
+      .replace(/\bCharm\b/g, "护符")
       .replace(/\bVaal Ring\b/g, "瓦尔戒指")
       .replace(/\bRing\b/g, "戒指")
       .replace(/\bBelt\b/g, "腰带")
@@ -1105,7 +1186,7 @@
       .replace(/\bCurse\b/g, "诅咒")
       .replace(/\bFlasks\b/g, "药剂")
       .replace(/\bFlask\b/g, "药剂")
-      .replace(/\bCharm\b/g, "咒符")
+      .replace(/\bCharm\b/g, "护符")
       .replace(/\bSockets\b/g, "插槽")
       .replace(/\bSocketed\b/g, "已镶嵌")
       .replace(/\bSocket\b/g, "插槽")
@@ -1316,21 +1397,60 @@
       }
       #${PANEL_ID} .codex-section {
         margin-bottom: 18px;
+        padding: 0 12px 12px;
+        border: 1px solid var(--color-coolgrey-700, #2a3341);
+        border-left: 4px solid var(--color-emerald-400, #10d9a3);
+        background: rgba(10, 16, 25, 0.58);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.025);
       }
       #${PANEL_ID} .codex-section-title {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: flex-start;
         gap: 10px;
-        margin: 4px 0 10px;
+        margin: 0 -12px 12px;
+        padding: 9px 12px 9px 10px;
+        border-bottom: 1px solid var(--color-coolgrey-700, #2a3341);
+        background: rgba(16, 217, 163, 0.10);
         color: var(--color-coolgrey-100, #f2f4f7);
-        font-size: 16px;
-        font-weight: 650;
+        font-size: 17px;
+        font-weight: 750;
+      }
+      #${PANEL_ID} .codex-section-title-main {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+      #${PANEL_ID} .codex-section-title-text {
+        color: var(--color-coolgrey-100, #f2f4f7);
+        font-size: 17px;
+        font-weight: 750;
       }
       #${PANEL_ID} .codex-section-title span {
         color: var(--color-coolgrey-400, #8b95a7);
         font-size: 12px;
         font-weight: 400;
+      }
+      #${PANEL_ID} .codex-collapse-button {
+        flex: none;
+        margin-left: 2px;
+        padding: 2px 8px;
+        font-size: 12px;
+        line-height: 1.5;
+        background: rgba(16, 217, 163, 0.10);
+        border-color: rgba(16, 217, 163, 0.34);
+      }
+      #${PANEL_ID} .codex-section.codex-collapsed > :not(.codex-section-title) {
+        display: none !important;
+      }
+      #${PANEL_ID} .codex-section.codex-collapsed {
+        padding-bottom: 0;
+      }
+      #${PANEL_ID} .codex-section.codex-collapsed .codex-section-title {
+        margin-bottom: 0;
+        border-bottom: 0;
       }
       #${PANEL_ID} .codex-skill-toolbar {
         display: flex;
@@ -1359,12 +1479,12 @@
         margin-bottom: 10px;
         padding: 11px 14px;
         border: 1px solid var(--color-coolgrey-700, #2a3341);
-        border-left-width: 4px;
         background: rgba(255,255,255,0.02);
       }
-      #${PANEL_ID} .codex-type-active { border-left-color: #f5c76a; }
-      #${PANEL_ID} .codex-type-passive, #${PANEL_ID} .codex-type-spirit { border-left-color: var(--color-emerald-400, #10d9a3); }
-      #${PANEL_ID} .codex-type-granted { border-left-color: var(--color-emerald-400, #10d9a3); }
+      #${PANEL_ID} .codex-skill-card.codex-type-active { box-shadow: inset 0 3px 0 rgba(245, 199, 106, 0.72); }
+      #${PANEL_ID} .codex-skill-card.codex-type-passive,
+      #${PANEL_ID} .codex-skill-card.codex-type-spirit { box-shadow: inset 0 3px 0 rgba(16, 217, 163, 0.62); }
+      #${PANEL_ID} .codex-skill-card.codex-type-granted { box-shadow: inset 0 3px 0 rgba(123, 182, 240, 0.62); }
       #${PANEL_ID} .codex-top {
         display: flex;
         align-items: center;
@@ -1393,7 +1513,7 @@
       #${PANEL_ID} .codex-line-label { color: var(--color-coolgrey-500, #7f8ba0); margin-right: 6px; }
       #${PANEL_ID} table {
         width: 100%;
-        margin-top: 8px;
+        margin-top: 0;
         border-collapse: collapse;
         table-layout: fixed;
         font-size: 13px;
@@ -1544,13 +1664,14 @@
     const body = root.querySelector(".codex-body");
     body.innerHTML = "";
     updateControls();
-    renderItemSection(body, "装备/药剂", lastEquipment, false);
-    renderItemSection(body, "珠宝", lastJewels, true);
+    renderItemSection(body, "装备/药剂/护符", lastEquipment, false, "equipment");
+    renderItemSection(body, "珠宝", lastJewels, true, "jewels");
+    renderTalentSection(body);
     const skillSection = document.createElement("section");
     skillSection.className = "codex-section";
     const summary = summarizeRows(lastRows);
     skillSection.innerHTML = `
-      <div class="codex-section-title">技能 <span>${visibleRows(lastRows).length} 个</span></div>
+      ${sectionTitleHtml("技能", `${visibleRows(lastRows).length} 个`, "skills")}
       <div class="codex-skill-toolbar">
         <div class="codex-skill-summary">总技能 ${summary.total} | 主动 ${summary.active} | 被动 ${summary.passive}${summary.spirit ? ` | 精魂 ${summary.spirit}` : ""}</div>
         <div class="codex-skill-controls">
@@ -1565,6 +1686,7 @@
       </div>
     `;
     body.appendChild(skillSection);
+    applySectionCollapsed(skillSection, "skills");
     updateControls();
     const rows = visibleRows(lastRows);
     if (!rows.length) {
@@ -1627,11 +1749,11 @@
     }
   }
 
-  function renderItemSection(body, title, rows, isJewel) {
+  function renderItemSection(body, title, rows, isJewel, collapseKey) {
     if (!rows.length) return;
     const section = document.createElement("section");
     section.className = "codex-section";
-    section.innerHTML = `<div class="codex-section-title">${title} <span>${rows.length} 个</span></div>`;
+    section.innerHTML = sectionTitleHtml(title, `${rows.length} 个`, collapseKey);
     const table = document.createElement("table");
     table.innerHTML = `
       <thead>
@@ -1667,6 +1789,45 @@
       tbody.appendChild(tr);
     });
     section.appendChild(table);
+    applySectionCollapsed(section, collapseKey);
+    body.appendChild(section);
+  }
+
+  function renderTalentSection(body) {
+    const char = currentModel ? modelChar(currentModel.data) : null;
+    const talent = normalizeTalent(char);
+    if (!talent) return;
+    const summary = [
+      talent.treeName || "",
+      talent.total ? `天赋点 ${talent.total}` : "",
+      `升华点 ${talent.ascendancy || 0}`,
+      `武器专精 Set1 ${talent.set1Count || 0}`,
+      `Set2 ${talent.set2Count || 0}`,
+    ].filter(Boolean).join(" | ");
+    const section = document.createElement("section");
+    section.className = "codex-section";
+    section.innerHTML = `
+      ${sectionTitleHtml("天赋/任务奖励", summary || "-", "talent")}
+      <table>
+        <tbody>
+          <tr>
+            <th class="codex-item-slot">概览</th>
+            <td>${escapeHtml(summary || "-")}</td>
+          </tr>
+          ${talent.keystones?.length ? `
+            <tr>
+              <th class="codex-item-slot">关键天赋</th>
+              <td>${renderCellList(talent.keystones.map(localizedName), false)}</td>
+            </tr>
+          ` : ""}
+          <tr>
+            <th class="codex-item-slot">任务奖励</th>
+            <td>${renderCellList((talent.questStats || []).map(localizedModText), false)}</td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+    applySectionCollapsed(section, "talent");
     body.appendChild(section);
   }
 
@@ -1736,6 +1897,13 @@
     const button = event.target.closest("button");
     if (!button) return;
     event.preventDefault();
+    if (button.dataset.collapseSection) {
+      const key = button.dataset.collapseSection;
+      setSectionCollapsed(key, !isSectionCollapsed(key));
+      button.blur();
+      await renderRows();
+      return;
+    }
     if (button.dataset.lang) {
       currentNameLang = button.dataset.lang;
       await ensureNameLanguageLoaded();
