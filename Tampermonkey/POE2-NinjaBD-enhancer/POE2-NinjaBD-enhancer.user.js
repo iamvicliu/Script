@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2 NinjaBD增强
 // @namespace    local.codex.ninja.poe2
-// @version      1.0
-// @updated      2026-07-01 15:03:59
+// @version      1.1.0
+// @updated      2026-07-03 02:16:16
 // @description  在 poe.ninja POE2 BD 页面底部展示可复制的技能表格，并支持技能名称语言切换
 // @author       维克牛
 // @license      MIT
@@ -37,7 +37,7 @@
 
   const API_ROOT = "https://poe.ninja/poe2/api/profile/characters";
   const STYLE_ID = "codex-poe2-ninja-skill-style";
-  const SCRIPT_UPDATED_AT = "2026-07-01 15:03:59";
+  const SCRIPT_UPDATED_AT = "2026-07-03 02:16:16";
   const DEFAULT_HOSTS = ["poe.ninja", "www.poe.ninja", "poe.show", "www.poe.show", "ninja.710421059.xyz"];
   const MIRROR_HOSTS_KEY = "codex_poe2_ninja_mirror_hosts";
   const NAME_MAP_CACHE_KEY = "codex_poe2_ninja_name_maps_v1";
@@ -578,6 +578,33 @@
     return cleanText(name && value ? `${name} ${value}` : (name || value));
   }
 
+  function isSpiritRequirementText(text) {
+    return /(Spirit|精魂).{0,24}(Reservation|Reserve|Cost|保留|消耗)|(?:Reservation|Reserve|Cost|保留|消耗).{0,24}(Spirit|精魂)/i.test(text);
+  }
+
+  function isSkillDetailText(text) {
+    if (isSpiritRequirementText(text)) return false;
+    return /(Cost|消耗|Reservation|Reserve|保留|Cooldown|冷却|Cast Time|施放时间|Attack Time|攻击速度|Attack Damage|攻击伤害|Critical|暴击|Multiplier|加成|Additional Reservation|额外保留)/i.test(text);
+  }
+
+  function spiritRequirementParts(item) {
+    const fields = [
+      ...(item?.properties || []),
+      ...(item?.requirements || []),
+      ...(item?.explicitMods || []),
+      ...(item?.implicitMods || []),
+    ];
+    return fields
+      .map(fieldText)
+      .filter((text) => text && isSpiritRequirementText(text));
+  }
+
+  function skillDetailParts(item) {
+    return (item?.properties || [])
+      .map(fieldText)
+      .filter((text) => text && isSkillDetailText(text));
+  }
+
   function formatRequirementName(name) {
     return cleanText(name)
       .replace(/^\+?\d+\s*/, "")
@@ -613,6 +640,12 @@
       if (text && !seen.has(text)) {
         seen.add(text);
         parts.push(text);
+      }
+    }
+    for (const spiritPart of spiritRequirementParts(item)) {
+      if (!seen.has(spiritPart)) {
+        seen.add(spiritPart);
+        parts.push(spiritPart);
       }
     }
     return parts.join(" / ");
@@ -666,7 +699,7 @@
   function hasSpiritReservation(gem) {
     const item = gemItem(gem);
     const fields = [...(item.properties || []), ...(item.requirements || []), ...(item.explicitMods || [])];
-    return fields.some((field) => /(Spirit|精魂).{0,16}(Reservation|Reserve|Cost|保留|消耗)|(?:Reservation|Reserve|Cost|保留|消耗).{0,16}(Spirit|精魂)/i.test(cleanText(`${field?.name || ""} ${JSON.stringify(field?.values || "")}`)));
+    return fields.some((field) => isSpiritRequirementText(fieldText(field)));
   }
 
   function skillType(gem) {
@@ -701,6 +734,7 @@
         quality: quality || (isActiveLike ? "品质0%" : "-"),
         sockets: isActiveLike ? (gemSockets(gem) || "-") : "-",
         requirements: formatRequirements(item) || "-",
+        details: skillDetailParts(item),
       });
     }
 
@@ -716,6 +750,7 @@
       sockets: gemSockets(active) || gems.length || "-",
       tags: gemTags(active),
       requirements: formatRequirements(activeItem),
+      details: skillDetailParts(activeItem),
       skillType: type.label,
       skillTypeClass: type.className,
       inserted,
@@ -903,8 +938,12 @@
     lines.push(`   类型: ${row.skillType}`);
     if (row.tags) lines.push(`   标签: ${localizedModText(row.tags)}`);
     if (row.requirements) lines.push(`   需求: ${localizedModText(row.requirements)}`);
+    if (row.details?.length) lines.push(`   属性: ${row.details.map(localizedModText).join(" / ")}`);
     if (row.dpsRows.length) lines.push(`   DPS: ${row.dpsRows.map((dps) => `${localizedName(dps.name)}: ${formatNumber(dps.dps || dps.dotDps)}`).join(" / ")}`);
-    lines.push(`   已插入技能: ${row.inserted.length ? row.inserted.map((item) => `${item.rowType}:${localizedName(item.name)}${item.level !== "-" ? ` Lv${item.level}` : ""} ${item.quality}`).join(" / ") : "-"}`);
+    lines.push(`   已插入技能: ${row.inserted.length ? row.inserted.map((item) => {
+      const detail = item.details?.length ? ` ${item.details.map(localizedModText).join(" / ")}` : "";
+      return `${item.rowType}:${localizedName(item.name)}${item.level !== "-" ? ` Lv${item.level}` : ""} ${item.quality}${detail}`;
+    }).join(" / ") : "-"}`);
     return lines.join("\n");
   }
 
@@ -966,8 +1005,8 @@
     lines.push(`升华点: ${talent.ascendancy || 0}`);
     if (talent.anoints) lines.push(`涂油/配置: ${talent.anoints}`);
     if (talent.bonusPassives) lines.push(`额外天赋: ${talent.bonusPassives}`);
-    lines.push(`武器专精 Set1: ${talent.set1Count || 0}`);
-    lines.push(`武器专精 Set2: ${talent.set2Count || 0}`);
+    lines.push(`武器1: ${talent.set1Count || 0}`);
+    lines.push(`武器2: ${talent.set2Count || 0}`);
     if (talent.keystones?.length) {
       lines.push("关键天赋:");
       talent.keystones.forEach((name, index) => lines.push(`  ${index + 1}. ${localizedName(name)}`));
@@ -1532,6 +1571,7 @@
       #${PANEL_ID} .codex-insert-type-passive { color: #76d191; }
       #${PANEL_ID} .codex-insert-type-lineage { color: #c99cff; }
       #${PANEL_ID} .codex-level, #${PANEL_ID} .codex-quality, #${PANEL_ID} .codex-sockets { width: 96px; }
+      #${PANEL_ID} .codex-details { width: 190px; }
       #${PANEL_ID} .codex-requirements { width: 190px; }
       #${PANEL_ID} .codex-item-slot { width: 86px; }
       #${PANEL_ID} .codex-item-rarity { width: 82px; }
@@ -1707,6 +1747,7 @@
         </div>
         <div class="codex-line codex-tags"><span class="codex-line-label">标签</span>${escapeHtml(localizedModText(row.tags || "-"))}</div>
         ${row.requirements ? `<div class="codex-line codex-req"><span class="codex-line-label">需求</span>${escapeHtml(localizedModText(row.requirements))}</div>` : ""}
+        ${row.details?.length ? `<div class="codex-line codex-details-line"><span class="codex-line-label">属性</span>${escapeHtml(row.details.map(localizedModText).join(" / "))}</div>` : ""}
         ${row.dpsRows.length ? `<div class="codex-line"><span class="codex-line-label">DPS</span>${escapeHtml(row.dpsRows.map((dps) => `${localizedName(dps.name)} ${formatNumber(dps.dps || dps.dotDps)}`).join(" / "))}</div>` : ""}
         <div class="codex-line"><span class="codex-line-label">已插入技能</span>${row.inserted.length} 个</div>
       `;
@@ -1722,6 +1763,7 @@
               <th class="codex-level">等级</th>
               <th class="codex-quality">品质</th>
               <th class="codex-sockets">孔数</th>
+              <th class="codex-details">属性</th>
               <th class="codex-requirements">需求</th>
             </tr>
           </thead>
@@ -1738,6 +1780,7 @@
             <td class="codex-level">${item.level !== "-" ? `Lv${item.level}` : "-"}</td>
             <td class="codex-quality">${item.quality || "-"}</td>
             <td class="codex-sockets">${item.sockets || "-"}</td>
+            <td class="codex-details">${escapeHtml(item.details?.length ? item.details.map(localizedModText).join(" / ") : "-")}</td>
             <td class="codex-requirements">${escapeHtml(localizedModText(item.requirements || "-"))}</td>
           `;
           tr.querySelector(".codex-insert-name").textContent = localizedName(item.name);
@@ -1801,8 +1844,8 @@
       talent.treeName || "",
       talent.total ? `天赋点 ${talent.total}` : "",
       `升华点 ${talent.ascendancy || 0}`,
-      `武器专精 Set1 ${talent.set1Count || 0}`,
-      `Set2 ${talent.set2Count || 0}`,
+      `武器1 ${talent.set1Count || 0}`,
+      `武器2 ${talent.set2Count || 0}`,
     ].filter(Boolean).join(" | ");
     const section = document.createElement("section");
     section.className = "codex-section";
@@ -1811,7 +1854,7 @@
       <table>
         <tbody>
           <tr>
-            <th class="codex-item-slot">概览</th>
+            <th class="codex-item-slot">天赋</th>
             <td>${escapeHtml(summary || "-")}</td>
           </tr>
           ${talent.keystones?.length ? `
