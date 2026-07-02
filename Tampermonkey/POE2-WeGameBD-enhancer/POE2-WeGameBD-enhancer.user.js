@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2 WeGameBD增强
 // @namespace    local.codex.wegame.poe2
-// @version      1.0.0
-// @updated      2026-07-02 02:48:03
+// @version      1.1.0
+// @updated      2026-07-03 02:16:16
 // @description  在 WeGame 流放之路2 BD 分享页底部展示可复制的文字版技能信息
 // @author       维克牛
 // @license      MIT
@@ -23,7 +23,7 @@
   const API_BASE = "https://www.wegame.com.cn/api/v1/wegame.pallas.poe2.Profile";
   const PANEL_ID = "codex-poe2-skill-text-panel";
   const STYLE_ID = "codex-poe2-skill-text-style";
-  const SCRIPT_UPDATED_AT = "2026-07-02 02:48:03";
+  const SCRIPT_UPDATED_AT = "2026-07-03 02:16:16";
   const COLLAPSE_STORAGE_KEY = "codex-poe2-wegamebd-collapse-v1";
   const NAME_LANGS = ["cn", "tw", "us"];
   const NAME_LANG_LABELS = { cn: "简体", tw: "繁体", us: "EN" };
@@ -253,6 +253,7 @@
     const suffix = [
       support.level && support.level !== "-" ? `Lv${support.level}` : "",
       support.quality && support.quality !== "-" ? support.quality : "",
+      support.details?.length ? support.details.join(" / ") : "",
     ].filter(Boolean).join(" ");
     return suffix ? `${name}(${suffix})` : name;
   }
@@ -271,6 +272,7 @@
     lines.push(`   类型: ${row.skillType || "-"}`);
     if (row.tags) lines.push(`   标签: ${row.tags}`);
     if (row.requirements) lines.push(`   需求: ${row.requirements}`);
+    if (row.details?.length) lines.push(`   属性: ${row.details.join(" / ")}`);
     const tableRows = insertedRows(row);
     lines.push(`   已插入技能: ${tableRows.length ? tableRows.map((item) => `${item.rowType}:${localizedSupportText(item)}`).join(" / ") : "-"}`);
     return lines.join("\n");
@@ -348,6 +350,40 @@
     return cleanText(field?.value ?? field?.displayValue ?? field?.text ?? "");
   }
 
+  function fieldText(field) {
+    if (typeof field === "string") return cleanText(field);
+    const name = cleanText(field?.name || field?.type || field?.id || "");
+    const value = fieldValueText(field);
+    return cleanText(name && value ? `${name} ${value}` : (name || value));
+  }
+
+  function isSpiritRequirementText(text) {
+    return /(精魂|Spirit).{0,24}(消耗|保留|reservation|reserve|cost)|(?:消耗|保留|reservation|reserve|cost).{0,24}(精魂|Spirit)/i.test(text);
+  }
+
+  function isSkillDetailText(text) {
+    if (isSpiritRequirementText(text)) return false;
+    return /(消耗|Cost|保留|Reservation|Reserve|冷却|Cooldown|施放时间|Cast Time|攻击速度|Attack Time|攻击伤害|Attack Damage|暴击|Critical|加成|Multiplier|额外保留|Additional Reservation)/i.test(text);
+  }
+
+  function spiritRequirementParts(item) {
+    const fields = [
+      ...(item?.properties || []),
+      ...(item?.requirements || []),
+      ...(item?.explicitMods || []),
+      ...(item?.implicitMods || []),
+    ];
+    return fields
+      .map(fieldText)
+      .filter((text) => text && isSpiritRequirementText(text));
+  }
+
+  function skillDetailParts(item) {
+    return (item?.properties || [])
+      .map(fieldText)
+      .filter((text) => text && isSkillDetailText(text));
+  }
+
   function formatRequirements(item) {
     const requirements = Array.isArray(item?.requirements) ? item.requirements : [];
     const parts = requirements.map((requirement) => {
@@ -357,6 +393,9 @@
       if (name && value) return `${name} ${value}`;
       return name || value;
     }).filter(Boolean);
+    for (const spiritPart of spiritRequirementParts(item)) {
+      if (!parts.includes(spiritPart)) parts.push(spiritPart);
+    }
     return parts.join(" / ");
   }
 
@@ -391,8 +430,8 @@
       ...(skill?.implicitMods || []),
     ];
     return fields.some((field) => {
-      const text = cleanText(typeof field === "string" ? field : `${field?.name || ""} ${JSON.stringify(field?.values || "")}`);
-      return /(精魂|Spirit).{0,16}(消耗|保留|reservation|reserve|cost)|(?:消耗|保留|reservation|reserve|cost).{0,16}(精魂|Spirit)/i.test(text);
+      const text = fieldText(field);
+      return isSpiritRequirementText(text);
     });
   }
 
@@ -428,15 +467,18 @@
       if (isSupport(child)) {
         const childLevel = propValue(child, ["等级"]);
         const childQuality = propValue(child, ["品质"]);
+        const childDetails = skillDetailParts(child);
         const suffix = [
           childLevel ? `Lv${formatLevel(childLevel)}` : "",
           childQuality && childQuality !== "-" ? formatQuality(childQuality) : "",
+          childDetails.length ? childDetails.join(" / ") : "",
         ].filter(Boolean).join(" ");
         const supportRow = {
           name: childName,
           rowType: "被动",
           level: childLevel ? formatLevel(childLevel) : "-",
           quality: childQuality && childQuality !== "-" ? formatQuality(childQuality) : "-",
+          details: childDetails,
           text: suffix ? `${childName}(${suffix})` : childName,
         };
         supports.push(supportRow);
@@ -446,6 +488,7 @@
         const childQuality = propValue(child, ["品质"]);
         const childSockets = Array.isArray(child.gemSockets) ? child.gemSockets.length : "";
         const childRequirements = formatRequirements(child);
+        const childDetails = skillDetailParts(child);
         const childRow = {
           name: childName,
           rowType: "主动",
@@ -453,8 +496,9 @@
           quality: childQuality && childQuality !== "-" ? formatQuality(childQuality) : "品质0%",
           sockets: childSockets || "-",
           requirements: childRequirements || "-",
+          details: childDetails,
         };
-        childRow.text = `${childName}${childRow.level !== "-" ? ` Lv${childRow.level}` : ""} ${childRow.quality}${childSockets ? ` ${childSockets}孔` : ""}${childRow.requirements !== "-" ? ` 需求:${childRow.requirements}` : ""}`;
+        childRow.text = `${childName}${childRow.level !== "-" ? ` Lv${childRow.level}` : ""} ${childRow.quality}${childSockets ? ` ${childSockets}孔` : ""}${childDetails.length ? ` 属性:${childDetails.join(" / ")}` : ""}${childRow.requirements !== "-" ? ` 需求:${childRow.requirements}` : ""}`;
         nestedActives.push(childRow);
         inserted.push(childRow);
       }
@@ -466,6 +510,8 @@
     lines.push(`   类型: ${type.label}`);
     if (tags) lines.push(`   标签: ${tags}`);
     if (requirements) lines.push(`   需求: ${requirements}`);
+    const details = skillDetailParts(skill);
+    if (details.length) lines.push(`   属性: ${details.join(" / ")}`);
     const tableRows = inserted;
     lines.push(`   已插入技能: ${tableRows.length ? tableRows.map((item) => `${item.rowType}:${item.text || item.name}`).join(" / ") : "-"}`);
     return {
@@ -476,6 +522,7 @@
       sockets: sockets || "-",
       tags,
       requirements,
+      details,
       skillType: type.label,
       skillTypeClass: type.className,
       supports,
@@ -798,10 +845,9 @@
 
   function formatTalentText(talent) {
     const lines = [];
-    if (talent.total) lines.push(`天赋点: ${talent.assigned}/${talent.total}`);
-    else if (talent.assigned) lines.push(`天赋点: ${talent.assigned}`);
-    lines.push(`武器专精 Set1: ${talent.set1Count || 0}`);
-    lines.push(`武器专精 Set2: ${talent.set2Count || 0}`);
+    if (talent.assigned) lines.push(`天赋点: ${talent.assigned}`);
+    lines.push(`武器1: ${talent.set1Count || 0}`);
+    lines.push(`武器2: ${talent.set2Count || 0}`);
     if (talent.jewelSocketCount) lines.push(`天赋珠宝槽: ${talent.jewelSocketCount}`);
     if (talent.questStats?.length) {
       lines.push("任务奖励:");
@@ -1230,6 +1276,9 @@
       #${PANEL_ID} .codex-support-level,
       #${PANEL_ID} .codex-support-quality {
         width: 120px;
+      }
+      #${PANEL_ID} .codex-support-details {
+        width: 180px;
       }
       #${PANEL_ID} .codex-support-requirements {
         width: 180px;
@@ -1716,9 +1765,9 @@
     const section = document.createElement("section");
     section.className = "codex-item-section";
     const summary = [
-      lastTalent.total ? `天赋点 ${lastTalent.assigned}/${lastTalent.total}` : (lastTalent.assigned ? `天赋点 ${lastTalent.assigned}` : ""),
-      `武器专精 Set1 ${lastTalent.set1Count || 0}`,
-      `Set2 ${lastTalent.set2Count || 0}`,
+      lastTalent.assigned ? `天赋点 ${lastTalent.assigned}` : "",
+      `武器1 ${lastTalent.set1Count || 0}`,
+      `武器2 ${lastTalent.set2Count || 0}`,
       lastTalent.jewelSocketCount ? `天赋珠宝槽 ${lastTalent.jewelSocketCount}` : "",
     ].filter(Boolean).join(" | ");
     section.innerHTML = `
@@ -1726,7 +1775,7 @@
       <table class="codex-item-table">
         <tbody>
           <tr>
-            <th class="codex-item-slot">概览</th>
+            <th class="codex-item-slot">天赋</th>
             <td>${escapeHtml(summary || "-")}</td>
           </tr>
           <tr>
@@ -1796,6 +1845,7 @@
           </div>
           <div class="codex-skill-line codex-skill-tags"></div>
           <div class="codex-skill-line codex-skill-requirements"></div>
+          <div class="codex-skill-line codex-skill-details"></div>
           <div class="codex-skill-line codex-skill-supports"></div>
           <div class="codex-skill-line codex-skill-nested"></div>
         `;
@@ -1812,6 +1862,12 @@
         } else {
           requirements.remove();
         }
+        const details = card.querySelector(".codex-skill-details");
+        if (row.details?.length) {
+          details.innerHTML = `<span class="codex-skill-label">属性</span>${row.details.join(" / ")}`;
+        } else {
+          details.remove();
+        }
         const supports = card.querySelector(".codex-skill-supports");
         const tableRows = insertedRows(row);
         supports.innerHTML = `<span class="codex-skill-label">已插入技能</span>${tableRows.length} 个`;
@@ -1826,6 +1882,7 @@
                 <th>技能石</th>
                 <th class="codex-support-level">等级</th>
                 <th class="codex-support-quality">品质</th>
+                <th class="codex-support-details">属性</th>
                 <th class="codex-support-requirements">需求</th>
               </tr>
             </thead>
@@ -1851,10 +1908,13 @@
             const qualityTd = document.createElement("td");
             qualityTd.className = "codex-support-quality";
             qualityTd.textContent = support.quality || (rowType === "主动" ? "品质0%" : "-");
+            const detailsTd = document.createElement("td");
+            detailsTd.className = "codex-support-details";
+            detailsTd.textContent = support.details?.length ? support.details.join(" / ") : "-";
             const requirementsTd = document.createElement("td");
             requirementsTd.className = "codex-support-requirements";
             requirementsTd.textContent = support.requirements || "-";
-            tr.append(indexTd, typeTd, nameTd, levelTd, qualityTd, requirementsTd);
+            tr.append(indexTd, typeTd, nameTd, levelTd, qualityTd, detailsTd, requirementsTd);
             tbody.appendChild(tr);
           });
           supports.appendChild(table);
