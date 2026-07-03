@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2DB 多语言信息助手
 // @namespace    http://tampermonkey.net/
-// @version      3.4.3
-// @lastUpdated  2026-06-16 20:56:51 +08:00
+// @version      3.4.4
+// @lastUpdated  2026-07-04 07:25:56 +08:00
 // @description  POE2DB 多语言名称、三语搜索与复制助手
 // @author       维克牛
 // @contact      https://nga.178.com/nuke.php?func=ucp&uid=6888984
@@ -68,6 +68,7 @@
             top: 8px;
             right: 8px;
             width: 280px;
+            min-height: 420px;
             max-height: calc(100vh - 24px);
             box-sizing: border-box;
             overflow-y: auto;
@@ -125,7 +126,6 @@
             outline: none;
         }
         .poe-helper-search {
-            position: relative;
             display: grid;
             grid-template-columns: 1fr 52px;
             gap: 6px;
@@ -157,12 +157,9 @@
             color: #ffe2a0;
         }
         .poe-helper-results {
-            position: absolute;
-            top: calc(100% + 6px);
-            left: 0;
-            right: 0;
+            grid-column: 1 / -1;
             display: none;
-            z-index: 1;
+            margin-top: 0;
             max-height: min(260px, calc(100vh - 190px));
             overflow-y: auto;
             border-radius: 4px;
@@ -321,6 +318,7 @@
         .poe-helper-content {
             margin-top: 14px;
         }
+        .poe-helper-content > .poe-helper-empty,
         .poe-helper-content > .poe-helper-loading {
             min-height: 220px;
             display: flex;
@@ -876,6 +874,10 @@
     };
 
     const getResultLabel = (result, lang) => result.labels?.[lang] || result.labels?.cn || result.labels?.tw || result.labels?.us || result.path;
+    const getResultDefaultLang = (result) => {
+        if (LANGS.includes(result.lastLang) && result.labels?.[result.lastLang]) return result.lastLang;
+        return LANGS.find((lang) => result.labels?.[lang]) || 'cn';
+    };
 
     const renderSearchResults = (container, results, options = {}) => {
         container.innerHTML = '';
@@ -910,20 +912,28 @@
                 .join('');
 
             row.innerHTML = `
-                <div class="poe-helper-result-top">
+                <div class="poe-helper-result-top" data-action="open-result-default">
                     <div class="poe-helper-result-name">${escapeHtml(primaryLabel)}</div>
                     <span class="poe-helper-type-badge">${escapeHtml(typeText)}</span>
                 </div>
                 <div class="poe-helper-result-langs">${langRows}</div>
             `;
+            row.querySelector('[data-action="open-result-default"]')?.addEventListener('pointerdown', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openSearchResult(result, getResultDefaultLang(result));
+            });
             row.querySelectorAll('.poe-helper-result-lang').forEach((langRow) => {
-                langRow.addEventListener('click', (event) => {
+                langRow.addEventListener('pointerdown', (event) => {
+                    if (event.target.closest('[data-action="copy-result"]')) return;
+                    event.preventDefault();
                     event.stopPropagation();
                     openSearchResult(result, langRow.dataset.lang);
                 });
             });
             row.querySelectorAll('[data-action="copy-result"]').forEach((button) => {
-                button.addEventListener('click', (event) => {
+                button.addEventListener('pointerdown', (event) => {
+                    event.preventDefault();
                     event.stopPropagation();
                     copyText(button.dataset.name);
                 });
