@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2 WeGameBD增强
 // @namespace    local.codex.wegame.poe2
-// @version      1.1.0
-// @updated      2026-07-03 02:16:16
+// @version      1.1.1
+// @updated      2026-07-04 10:20:34
 // @description  在 WeGame 流放之路2 BD 分享页底部展示可复制的文字版技能信息
 // @author       维克牛
 // @license      MIT
@@ -23,7 +23,7 @@
   const API_BASE = "https://www.wegame.com.cn/api/v1/wegame.pallas.poe2.Profile";
   const PANEL_ID = "codex-poe2-skill-text-panel";
   const STYLE_ID = "codex-poe2-skill-text-style";
-  const SCRIPT_UPDATED_AT = "2026-07-03 02:16:16";
+  const SCRIPT_UPDATED_AT = "2026-07-04 10:20:34";
   const COLLAPSE_STORAGE_KEY = "codex-poe2-wegamebd-collapse-v1";
   const NAME_LANGS = ["cn", "tw", "us"];
   const NAME_LANG_LABELS = { cn: "简体", tw: "繁体", us: "EN" };
@@ -422,6 +422,19 @@
     return Boolean(item?.support) || item?.frameTypeId === "SupportGem";
   }
 
+  function isLineageSupport(item) {
+    const fields = [
+      item?.typeLine,
+      item?.baseType,
+      item?.name,
+      ...(item?.properties || []),
+      ...(item?.requirements || []),
+      ...(item?.explicitMods || []),
+      ...(item?.implicitMods || []),
+    ];
+    return fields.some((field) => /LineageSupports|Lineage|血脉|血脈|血统|血統/i.test(fieldText(field)));
+  }
+
   function hasExplicitSpiritCost(skill) {
     const fields = [
       ...(skill?.properties || []),
@@ -475,7 +488,7 @@
         ].filter(Boolean).join(" ");
         const supportRow = {
           name: childName,
-          rowType: "被动",
+          rowType: isLineageSupport(child) ? "血脉" : "被动",
           level: childLevel ? formatLevel(childLevel) : "-",
           quality: childQuality && childQuality !== "-" ? formatQuality(childQuality) : "-",
           details: childDetails,
@@ -1270,6 +1283,9 @@
       #${PANEL_ID} td.codex-support-type-passive {
         color: #75c58e;
       }
+      #${PANEL_ID} td.codex-support-type-lineage {
+        color: #c99cff;
+      }
       #${PANEL_ID} td.codex-support-type-spirit {
         color: #8fd8a4;
       }
@@ -1896,7 +1912,7 @@
             indexTd.textContent = String(supportIndex + 1);
             const typeTd = document.createElement("td");
             const rowType = support.rowType || "被动";
-            const typeClass = rowType === "主动" ? "active" : rowType === "精魂" ? "spirit" : "passive";
+            const typeClass = rowType === "主动" ? "active" : rowType === "血脉" ? "lineage" : rowType === "精魂" ? "spirit" : "passive";
             typeTd.className = `codex-support-type codex-support-type-${typeClass}`;
             typeTd.textContent = rowType;
             const nameTd = document.createElement("td");
