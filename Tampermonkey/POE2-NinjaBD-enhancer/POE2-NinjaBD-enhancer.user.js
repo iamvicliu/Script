@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2 NinjaBD增强
 // @namespace    local.codex.ninja.poe2
-// @version      1.1.0
-// @updated      2026-07-03 02:16:16
+// @version      1.1.10
+// @updated      2026-07-07 14:47:56
 // @description  在 poe.ninja POE2 BD 页面底部展示可复制的技能表格，并支持技能名称语言切换
 // @author       维克牛
 // @license      MIT
@@ -10,6 +10,7 @@
 // @downloadURL  https://gitee.com/aprilfool/Script/raw/main/Tampermonkey/POE2-NinjaBD-enhancer/POE2-NinjaBD-enhancer.user.js
 // @match        *://*/poe2/builds/*
 // @match        *://*/poe2/profile/*/*/character/*
+// @match        *://*/poe2/pob/*
 // @run-at       document-idle
 // @grant        GM_setClipboard
 // @grant        GM_getValue
@@ -25,7 +26,7 @@
 (function () {
   "use strict";
 
-  const SCRIPT_VERSION = "1.0";
+  const SCRIPT_VERSION = "1.1.10";
   const INSTANCE_KEY = "__POE2_NINJABD_ENHANCER_ACTIVE__";
   const PANEL_ID = "codex-poe2-ninja-skill-panel";
   const existingInstance = window[INSTANCE_KEY];
@@ -37,7 +38,7 @@
 
   const API_ROOT = "https://poe.ninja/poe2/api/profile/characters";
   const STYLE_ID = "codex-poe2-ninja-skill-style";
-  const SCRIPT_UPDATED_AT = "2026-07-03 02:16:16";
+  const SCRIPT_UPDATED_AT = "2026-07-07 14:47:56";
   const DEFAULT_HOSTS = ["poe.ninja", "www.poe.ninja", "poe.show", "www.poe.show", "ninja.710421059.xyz"];
   const MIRROR_HOSTS_KEY = "codex_poe2_ninja_mirror_hosts";
   const NAME_MAP_CACHE_KEY = "codex_poe2_ninja_name_maps_v1";
@@ -55,6 +56,8 @@
   let lastJewels = [];
   let lastText = "";
   let currentModel = null;
+  let currentPobTalent = null;
+  let currentPobSummary = "";
   let currentRoute = null;
   let nameLangState = "ready";
   let nameLangMessage = "";
@@ -386,6 +389,9 @@
     if (parts.length >= 6 && parts[0] === "poe2" && parts[1] === "builds" && parts[3] === "character") {
       return { account: parts[4], league: parts[2], character: parts[5] };
     }
+    if (parts.length >= 3 && parts[0] === "poe2" && parts[1] === "pob") {
+      return { pobCodeId: parts[2] };
+    }
     for (const candidate of [parsed.search, parsed.hash, value]) {
       const unquoted = decodeURIComponent(candidate || "");
       let match = unquoted.match(/\/poe2\/profile\/([^/?#]+)\/([^/?#]+)\/character\/([^/?#]+)/);
@@ -408,6 +414,324 @@
   function modelUrl(route, version) {
     const parts = [route.account, route.league, route.character].map((part) => encodeURIComponent(part));
     return `${API_ROOT}/${parts[0]}/${parts[1]}/${parts[2]}/model/${version}`;
+  }
+
+  function pobRawUrl(route) {
+    return `https://poe.ninja/poe2/pob/raw/${encodeURIComponent(route.pobCodeId)}`;
+  }
+
+  function base64UrlToBytes(value) {
+    const normalized = cleanText(value).replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  }
+
+  async function inflatePobCode(value) {
+    const bytes = base64UrlToBytes(value);
+    if (typeof DecompressionStream === "function") {
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+      return new Response(stream).text();
+    }
+    throw new Error("当前浏览器不支持 DecompressionStream，无法在脚本内解压 PoB。");
+  }
+
+  function parseXml(value) {
+    const doc = new DOMParser().parseFromString(value, "application/xml");
+    const error = doc.querySelector("parsererror");
+    if (error) throw new Error(cleanText(error.textContent) || "PoB XML 解析失败");
+    return doc;
+  }
+
+  function xmlAttr(node, name, fallback = "") {
+    return cleanText(node?.getAttribute?.(name) ?? fallback);
+  }
+
+  function pobGemName(gem) {
+    return xmlAttr(gem, "nameSpec") || xmlAttr(gem, "skillId") || xmlAttr(gem, "variantId") || "-";
+  }
+
+  function isPobSupportGem(gem) {
+    const gemId = xmlAttr(gem, "gemId");
+    const skillId = xmlAttr(gem, "skillId");
+    const variantId = xmlAttr(gem, "variantId");
+    return /SupportGem|^Support|Support/i.test(`${gemId} ${skillId} ${variantId}`);
+  }
+
+  function normalizePobSkillType(gem, inserted) {
+    const name = pobGemName(gem);
+    const idText = `${xmlAttr(gem, "gemId")} ${xmlAttr(gem, "skillId")} ${xmlAttr(gem, "variantId")}`;
+    if (/CastOn|Meta|Blasphemy|Herald|Aura|Banner|Persistent/i.test(idText) || inserted.some((row) => row.rowType === "主动")) {
+      return { label: "被动技能", className: "codex-type-passive" };
+    }
+    if (/Minion|Spirit|Reservation/i.test(idText + " " + name)) return { label: "精魂技能", className: "codex-type-spirit" };
+    return { label: "主动技能", className: "codex-type-active" };
+  }
+
+  function pobGemLevel(gem) {
+    const level = xmlAttr(gem, "level");
+    return level && level !== "0" ? level : "-";
+  }
+
+  function pobGemQuality(gem, isActiveLike) {
+    const quality = xmlAttr(gem, "quality");
+    if (!quality || quality === "0") return isActiveLike ? "品质0%" : "-";
+    return `品质${quality}%`;
+  }
+
+  function normalizePobSkills(doc) {
+    const skillSets = Array.from(doc.querySelectorAll("Skills > SkillSet"));
+    const skillSet = skillSets.find((set) => xmlAttr(set, "id") === "1") || skillSets[0];
+    if (!skillSet) return [];
+    return Array.from(skillSet.querySelectorAll(":scope > Skill"))
+      .filter((skill) => xmlAttr(skill, "enabled", "true") !== "false")
+      .map((skill, index) => {
+        const gems = Array.from(skill.querySelectorAll(":scope > Gem"))
+          .filter((gem) => xmlAttr(gem, "enabled", "true") !== "false");
+        const active = gems.find((gem) => !isPobSupportGem(gem)) || gems[0];
+        const inserted = gems.filter((gem) => gem !== active).map((gem) => {
+          const rowType = isPobSupportGem(gem) ? "被动" : "主动";
+          const isActiveLike = rowType === "主动";
+          return {
+            name: pobGemName(gem),
+            rowType,
+            level: pobGemLevel(gem),
+            quality: pobGemQuality(gem, isActiveLike),
+            sockets: "-",
+            requirements: "-",
+            details: [],
+          };
+        });
+        const type = normalizePobSkillType(active, inserted);
+        return {
+          originalIndex: index,
+          name: pobGemName(active) || `PoB Skill ${index + 1}`,
+          level: pobGemLevel(active),
+          quality: pobGemQuality(active, true),
+          sockets: gems.length || "-",
+          tags: "-",
+          requirements: "-",
+          details: [],
+          skillType: type.label,
+          skillTypeClass: type.className,
+          inserted,
+          dpsRows: [],
+        };
+      })
+      .filter((row) => row.name && row.name !== "-");
+  }
+
+  function pobSlotToInventoryId(slotName) {
+    const clean = cleanText(slotName);
+    const map = {
+      "Weapon 1": "Weapon",
+      "Weapon 2": "Offhand",
+      "Weapon 1 Swap": "Weapon2",
+      "Weapon 2 Swap": "Offhand2",
+      "Body Armour": "BodyArmour",
+      Helmet: "Helm",
+      Gloves: "Gloves",
+      Boots: "Boots",
+      Belt: "Belt",
+      Amulet: "Amulet",
+      "Ring 1": "Ring",
+      "Ring 2": "Ring2",
+      "Ring 3": "Ring3",
+      "Flask 1": "LifeFlask",
+      "Flask 2": "ManaFlask",
+      "Flask 3": "Flask",
+      "Charm 1": "Charm",
+      "Charm 2": "Charm",
+      "Charm 3": "Charm",
+    };
+    return map[clean] || clean.replace(/\s+/g, "");
+  }
+
+  function splitPobItemLines(itemNode) {
+    return String(itemNode?.textContent || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => line !== "--------");
+  }
+
+  function cleanPobModLine(line) {
+    return cleanText(line).replace(/^(?:\{[^}]+\})+/, "").trim();
+  }
+
+  function parsePobItemNode(itemNode) {
+    const lines = splitPobItemLines(itemNode);
+    const first = lines[0] || "";
+    const rarity = first.replace(/^Rarity:\s*/i, "") || "-";
+    const name = cleanText(lines[1] || "-");
+    const baseType = cleanText(lines[2] || "");
+    const properties = [];
+    const socketed = [];
+    const mods = [];
+    let ilvl = "";
+    let corrupted = false;
+    const modBuckets = new Map();
+    const addMod = (label, text) => {
+      const clean = cleanPobModLine(text);
+      if (!clean) return;
+      if (!modBuckets.has(label)) modBuckets.set(label, []);
+      modBuckets.get(label).push(clean);
+    };
+    for (const line of lines.slice(3)) {
+      if (/^Unique ID:/i.test(line)) continue;
+      if (/^Item Level:/i.test(line)) {
+        ilvl = cleanText(line.replace(/^Item Level:\s*/i, ""));
+        continue;
+      }
+      if (/^LevelReq:/i.test(line)) {
+        properties.push(`需求 等级 ${cleanText(line.replace(/^LevelReq:\s*/i, ""))}`);
+        continue;
+      }
+      if (/^Quality:/i.test(line)) {
+        properties.push(`品质 +${cleanText(line.replace(/^Quality:\s*/i, ""))}%`);
+        continue;
+      }
+      if (/^Sockets:/i.test(line)) {
+        properties.push(`插槽 ${cleanText(line.replace(/^Sockets:\s*/i, ""))}`);
+        continue;
+      }
+      if (/^Rune:/i.test(line)) {
+        socketed.push(cleanText(line.replace(/^Rune:\s*/i, "")));
+        continue;
+      }
+      if (/^(Strength|Dexterity|Intelligence)Req:/i.test(line)) {
+        properties.push(`需求 ${cleanText(line.replace(/Req:/i, " "))}`);
+        continue;
+      }
+      if (/^Implicits?:/i.test(line)) continue;
+      if (/^Corrupted$/i.test(line)) {
+        corrupted = true;
+        continue;
+      }
+      if (/^Charm Slots:/i.test(line) || /^Energy Shield:|^Armour:|^Evasion:|^Ward:|^Physical Damage:|^Critical Strike Chance:|^Attacks per Second:/i.test(line)) {
+        properties.push(cleanText(line));
+        continue;
+      }
+      if (/^\{enchant\}/i.test(line)) addMod("附魔/涂油", line);
+      else if (/^\{desecrated\}/i.test(line)) addMod("特殊词缀", line);
+      else if (/^\{crafted\}/i.test(line)) addMod("工艺", line);
+      else if (/^\{fractured\}/i.test(line)) addMod("破裂", line);
+      else if (/^\{rune\}/i.test(line)) addMod("符文/镶嵌", line);
+      else addMod("装备词缀", line);
+    }
+    for (const [label, groupLines] of modBuckets.entries()) mods.push({ label, lines: groupLines });
+    return { id: xmlAttr(itemNode, "id"), rarity, name, baseType, properties, socketed, mods, ilvl, corrupted };
+  }
+
+  function normalizePobItems(doc) {
+    const itemMap = new Map(Array.from(doc.querySelectorAll("Items > Item")).map((node) => [xmlAttr(node, "id"), parsePobItemNode(node)]));
+    const itemSet = doc.querySelector("Items > ItemSet");
+    const equipment = [];
+    if (itemSet) {
+      Array.from(itemSet.querySelectorAll(":scope > Slot")).forEach((slot, index) => {
+        const itemId = xmlAttr(slot, "itemId");
+        if (!itemId || itemId === "0" || !itemMap.has(itemId)) return;
+        const slotName = xmlAttr(slot, "name");
+        const inventoryId = pobSlotToInventoryId(slotName);
+        const parsed = itemMap.get(itemId);
+        const entry = {
+          itemData: {
+            inventoryId,
+            name: parsed.name,
+            typeLine: parsed.baseType,
+            baseType: parsed.baseType,
+            frameTypeId: parsed.rarity ? parsed.rarity[0] + parsed.rarity.slice(1).toLowerCase() : "",
+            properties: parsed.properties.map((text) => ({ name: text, values: [] })),
+            implicitMods: [],
+            explicitMods: [],
+            enchantMods: [],
+            craftedMods: [],
+            fracturedMods: [],
+            runeMods: [],
+            desecratedMods: [],
+            socketedItems: parsed.socketed.map((name) => ({ name })),
+            corrupted: parsed.corrupted,
+            ilvl: parsed.ilvl,
+          },
+        };
+        for (const group of parsed.mods) {
+          const target = {
+            "底材词缀": "implicitMods",
+            "附魔/涂油": "enchantMods",
+            "装备词缀": "explicitMods",
+            "破裂": "fracturedMods",
+            "工艺": "craftedMods",
+            "符文/镶嵌": "runeMods",
+            "特殊词缀": "desecratedMods",
+          }[group.label] || "explicitMods";
+          entry.itemData[target] = group.lines;
+        }
+        equipment.push(normalizeItem(entry, index, itemKind(entry, "装备")));
+      });
+    }
+    const jewelIds = new Map();
+    Array.from(doc.querySelectorAll("Tree > Spec > Sockets > Socket")).forEach((socket, index) => {
+      const itemId = xmlAttr(socket, "itemId");
+      if (itemId && itemId !== "0" && itemMap.has(itemId)) jewelIds.set(itemId, { index, nodeId: xmlAttr(socket, "nodeId") });
+    });
+    const jewels = Array.from(jewelIds.entries()).map(([itemId, info]) => {
+      const parsed = itemMap.get(itemId);
+      const entry = {
+        itemData: {
+          inventoryId: "PassiveJewels",
+          name: parsed.name,
+          typeLine: parsed.baseType,
+          baseType: parsed.baseType,
+          frameTypeId: parsed.rarity ? parsed.rarity[0] + parsed.rarity.slice(1).toLowerCase() : "",
+          properties: parsed.properties.map((text) => ({ name: text, values: [] })),
+          explicitMods: parsed.mods.flatMap((group) => group.lines),
+          corrupted: parsed.corrupted,
+          ilvl: parsed.ilvl,
+        },
+      };
+      const row = normalizeItem(entry, info.index, "珠宝");
+      row.position = info.nodeId ? `珠宝槽 ${info.nodeId}` : `珠宝槽 ${info.index + 1}`;
+      return row;
+    });
+    return {
+      equipment: equipment.sort((a, b) => equipmentSortValue(a) - equipmentSortValue(b) || a.originalIndex - b.originalIndex),
+      jewels,
+    };
+  }
+
+  function normalizePobTalent(doc) {
+    const build = doc.querySelector("Build");
+    const spec = doc.querySelector("Tree > Spec");
+    const nodes = xmlAttr(spec, "nodes").split(",").map(cleanText).filter(Boolean);
+    const sockets = Array.from(doc.querySelectorAll("Tree > Spec > Sockets > Socket")).filter((socket) => xmlAttr(socket, "itemId") && xmlAttr(socket, "itemId") !== "0");
+    if (!nodes.length && !sockets.length && !build) return null;
+    return {
+      treeName: [xmlAttr(build, "ascendClassName"), xmlAttr(build, "className"), xmlAttr(build, "level") ? `Lv${xmlAttr(build, "level")}` : ""].filter(Boolean).join(" / "),
+      total: nodes.length,
+      ascendancy: 0,
+      anoints: 0,
+      bonusPassives: 0,
+      set1Count: 0,
+      set2Count: 0,
+      questStats: sockets.length ? [`已插入天赋珠宝 ${sockets.length} 个`] : [],
+      keystones: [],
+    };
+  }
+
+  async function normalizePobBuild(code, codeId) {
+    const xml = await inflatePobCode(code);
+    const doc = parseXml(xml);
+    const build = doc.querySelector("Build");
+    const items = normalizePobItems(doc);
+    return {
+      rows: normalizePobSkills(doc),
+      equipment: items.equipment,
+      jewels: items.jewels,
+      talent: normalizePobTalent(doc),
+      summary: `PoB ${codeId}${xmlAttr(build, "level") ? ` | Lv${xmlAttr(build, "level")}` : ""}${xmlAttr(build, "ascendClassName") ? ` ${xmlAttr(build, "ascendClassName")}` : ""}`,
+    };
   }
 
   function modelChar(data) {
@@ -800,9 +1124,32 @@
     return currentNameLang === "tw" ? simplifiedToTraditionalFallback(translated) : translated;
   }
 
+  function rarityClass(rarity) {
+    const label = cleanText(rarity);
+    if (/Unique/i.test(label)) return "codex-rarity-unique";
+    if (/Rare/i.test(label)) return "codex-rarity-rare";
+    if (/Magic/i.test(label)) return "codex-rarity-magic";
+    return "codex-rarity-normal";
+  }
+
+  function itemCategory(entry) {
+    const item = itemData(entry);
+    const raw = cleanText(item.inventoryId || entry?.inventoryId || entry?.itemSlot || "");
+    const label = cleanText([item.name, item.typeLine, item.baseType, item.display_name].filter(Boolean).join(" "));
+    const propText = (item.properties || []).map((field) => cleanText(field?.name || fieldText(field))).filter(Boolean).join(" ");
+    if (/^Amulet$/i.test(raw)) return "项链";
+    if (/^Charm/i.test(raw) || (/^Flask$/i.test(raw) && /(^|\s)(护符|咒符)(\s|$)|\bCharm\b(?!\s*Slots)/i.test(propText))) return "护符";
+    if (/^LifeFlask$/i.test(raw) || /生命|Life/i.test([label, propText].join(" "))) return "生命药剂";
+    if (/^ManaFlask$/i.test(raw) || /魔力|Mana/i.test([label, propText].join(" "))) return "魔力药剂";
+    if (/Flask/i.test(raw) || /药剂|\bFlask\b/i.test([label, propText].join(" "))) return "药剂";
+    if (!/^Amulet$/i.test(raw) && /(^|\s)(护符|咒符)(\s|$)|\bCharm\b/i.test(label)) return "护符";
+    return "";
+  }
+
   function itemSlot(entry, index) {
     const item = itemData(entry);
     const raw = cleanText(item.inventoryId || entry?.inventoryId || entry?.itemSlot || "");
+    const category = itemCategory(entry);
     const map = {
       BodyArmour: "胸甲",
       Helm: "头盔",
@@ -824,7 +1171,10 @@
       Charms: "护符",
       PassiveJewels: "珠宝",
     };
-    return map[raw] || raw || `#${index + 1}`;
+    if (/^(Flask|LifeFlask|ManaFlask|Charm|Charms)$/i.test(raw) && category) return category;
+    if (map[raw]) return map[raw];
+    if (category) return category;
+    return raw || `#${index + 1}`;
   }
 
   function itemProperties(entry) {
@@ -839,13 +1189,13 @@
   function itemMods(entry) {
     const item = itemData(entry);
     const groups = [
-      ["隐式", item.implicitMods],
+      ["底材词缀", item.implicitMods],
       ["附魔/涂油", item.enchantMods],
-      ["显式", item.explicitMods],
+      ["装备词缀", item.explicitMods],
       ["破裂", item.fracturedMods],
       ["工艺", item.craftedMods],
       ["符文/镶嵌", item.runeMods],
-      ["污化", item.desecratedMods],
+      ["特殊词缀", item.desecratedMods],
       ["绑定", item.bondedMods],
     ];
     return groups.map(([label, mods]) => ({
@@ -855,10 +1205,14 @@
   }
 
   function equipmentSortValue(row) {
+    if (row.kind === "护符" || row.slot === "护符") return 92;
+    if (row.kind === "生命药剂" || row.slot === "生命药剂") return 120;
+    if (row.kind === "魔力药剂" || row.slot === "魔力药剂") return 121;
+    if (row.kind === "药剂" || /药剂/.test(row.slot || "")) return 122;
     const order = {
       Weapon: 10,
-      Weapon2: 11,
-      Offhand: 20,
+      Offhand: 11,
+      Weapon2: 20,
       Offhand2: 21,
       Helm: 30,
       BodyArmour: 40,
@@ -869,12 +1223,13 @@
       Ring2: 81,
       Ring3: 82,
       Belt: 90,
-      LifeFlask: 100,
-      ManaFlask: 101,
-      Flask: 102,
-      Charm: 110,
-      Charms: 110,
+      Charm: 92,
+      Charms: 92,
+      LifeFlask: 120,
+      ManaFlask: 121,
+      Flask: 122,
     };
+    if (order[row.inventoryId] != null) return order[row.inventoryId];
     return order[row.inventoryId] ?? 999;
   }
 
@@ -907,9 +1262,8 @@
   function itemKind(entry, fallbackKind) {
     const item = itemData(entry);
     const raw = cleanText(item.inventoryId || entry?.inventoryId || entry?.itemSlot || "");
-    const label = cleanText(item.typeLine || item.baseType || item.name || "");
-    if (/Charm/i.test(raw) || /\bCharm\b/i.test(label)) return "护符";
-    if (/Flask/i.test(raw) || /\bFlask\b/i.test(label)) return "药剂";
+    const category = itemCategory(entry);
+    if (category && !/^Amulet$/i.test(raw)) return category;
     return fallbackKind;
   }
 
@@ -1021,7 +1375,7 @@
   function currentCopyText() {
     const parts = [];
     const char = currentModel ? modelChar(currentModel.data) : null;
-    const talent = normalizeTalent(char);
+    const talent = currentPobTalent || normalizeTalent(char);
     if (lastEquipment.length) parts.push("【装备/药剂/护符】\n" + lastEquipment.map(formatItemText).join("\n\n"));
     if (lastJewels.length) parts.push("【珠宝】\n" + lastJewels.map(formatItemText).join("\n\n"));
     if (talent) parts.push("【天赋/任务奖励】\n" + formatTalentText(talent));
@@ -1575,10 +1929,17 @@
       #${PANEL_ID} .codex-requirements { width: 190px; }
       #${PANEL_ID} .codex-item-slot { width: 86px; }
       #${PANEL_ID} .codex-item-rarity { width: 82px; }
+      #${PANEL_ID} .codex-rarity-unique { color: #af6025; font-weight: 700; }
+      #${PANEL_ID} .codex-rarity-rare { color: #d9c75f; font-weight: 700; }
+      #${PANEL_ID} .codex-rarity-magic { color: #8888ff; font-weight: 700; }
+      #${PANEL_ID} .codex-rarity-normal { color: var(--color-coolgrey-100, #f2f4f7); }
       #${PANEL_ID} .codex-item-props { width: 180px; }
       #${PANEL_ID} .codex-item-socketed { width: 170px; }
       #${PANEL_ID} .codex-item-mods { color: var(--color-coolgrey-200, #c8d2e1); }
       #${PANEL_ID} .codex-item-name { color: var(--color-coolgrey-100, #f2f4f7); font-weight: 600; }
+      #${PANEL_ID} .codex-item-name.codex-rarity-unique { color: #af6025; }
+      #${PANEL_ID} .codex-item-name.codex-rarity-rare { color: #d9c75f; }
+      #${PANEL_ID} .codex-item-name.codex-rarity-magic { color: #8888ff; }
       #${PANEL_ID} .codex-mod-group + .codex-mod-group {
         margin-top: 6px;
         padding-top: 6px;
@@ -1686,7 +2047,7 @@
     const root = panel();
     if (!root) return;
     const char = currentModel ? modelChar(currentModel.data) : null;
-    root.querySelector(".codex-summary").textContent = char ? `${cleanText(char.name)} Lv${char.level || "-"} ${cleanText(char.class || "")}` : "";
+    root.querySelector(".codex-summary").textContent = currentPobSummary || (char ? `${cleanText(char.name)} Lv${char.level || "-"} ${cleanText(char.class || "")}` : "");
     root.querySelectorAll("[data-lang]").forEach((button) => {
       button.classList.toggle("codex-active-control", button.dataset.lang === currentNameLang);
       button.disabled = nameLangState === "loading";
@@ -1704,6 +2065,8 @@
     const body = root.querySelector(".codex-body");
     body.innerHTML = "";
     updateControls();
+    const summaryNode = root.querySelector(".codex-summary");
+    if (summaryNode && currentPobSummary) summaryNode.textContent = currentPobSummary;
     renderItemSection(body, "装备/药剂/护符", lastEquipment, false, "equipment");
     renderItemSection(body, "珠宝", lastJewels, true, "jewels");
     renderTalentSection(body);
@@ -1818,11 +2181,12 @@
       const slot = isJewel ? (row.position || row.slot || "-") : row.slot;
       const propertyItems = splitListText(row.properties).map(localizedModText);
       const socketedHtml = renderCellList(row.socketed.map(localizedItemLabel), false);
+      const rarityClassName = rarityClass(row.rarity);
       tr.innerHTML = `
         <td class="codex-index">${index + 1}</td>
         <td class="codex-item-slot">${escapeHtml(slot)}</td>
-        <td class="codex-item-name"></td>
-        <td class="codex-item-rarity">${escapeHtml(localizedRarity(row.rarity))}</td>
+        <td class="codex-item-name ${rarityClassName}"></td>
+        <td class="codex-item-rarity ${rarityClassName}">${escapeHtml(localizedRarity(row.rarity))}</td>
         <td class="codex-item-props">${renderCellList(propertyItems, false)}</td>
         <td class="codex-item-socketed">${socketedHtml}</td>
         <td class="codex-item-mods">${renderModGroups(row.mods)}</td>
@@ -1838,7 +2202,7 @@
 
   function renderTalentSection(body) {
     const char = currentModel ? modelChar(currentModel.data) : null;
-    const talent = normalizeTalent(char);
+    const talent = currentPobTalent || normalizeTalent(char);
     if (!talent) return;
     const summary = [
       talent.treeName || "",
@@ -1926,8 +2290,32 @@
       return;
     }
     currentRoute = route;
+    if (route.pobCodeId) {
+      const root = await ensurePanel();
+      const body = root.querySelector(".codex-body");
+      try {
+        const code = await requestText(pobRawUrl(route));
+        const parsed = await normalizePobBuild(code, route.pobCodeId);
+        currentModel = null;
+        currentPobTalent = parsed.talent;
+        currentPobSummary = parsed.summary;
+        lastRows = parsed.rows;
+        lastEquipment = parsed.equipment;
+        lastJewels = parsed.jewels;
+        lastText = currentCopyText();
+        await renderRows();
+        preloadNameMaps();
+      } catch (error) {
+        currentPobTalent = null;
+        currentPobSummary = "";
+        body.innerHTML = `<div class="codex-skill-card">PoB短链读取失败：${escapeHtml(error.message || String(error))}</div>`;
+      }
+      return;
+    }
     const data = await fetchLatestModel(route);
     const char = modelChar(data);
+    currentPobTalent = null;
+    currentPobSummary = "";
     lastRows = (char.skills || []).map(normalizeSkillGroup).filter((row) => row.name);
     lastEquipment = normalizeEquipment(char);
     lastJewels = normalizeJewels(char);
