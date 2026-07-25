@@ -1,17 +1,20 @@
 // ==UserScript==
 // @name         POE2DB 多语言信息助手
 // @namespace    http://tampermonkey.net/
-// @version      3.4.4
-// @lastUpdated  2026-07-04 07:25:56 +08:00
-// @description  POE2DB 多语言名称、三语搜索与复制助手
+// @version      3.5.0
+// @lastUpdated  2026-07-26 03:35:00 +08:00
+// @description  PoEDB/POE2DB 多语言名称、三语搜索与复制助手
 // @author       维克牛
 // @contact      https://nga.178.com/nuke.php?func=ucp&uid=6888984
 // @contributor  Codex optimized
 // @match        https://poe2db.tw/*
+// @match        https://poedb.tw/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @connect      poe2db.tw
 // @connect      cdn.poe2db.tw
+// @connect      poedb.tw
+// @connect      cdn.poedb.tw
 // @license      MIT
 // @run-at       document-end
 // ==/UserScript==
@@ -21,9 +24,33 @@
 
     const LANGS = ['cn', 'tw', 'us'];
     const LANG_NAMES = { cn: '简体中文', tw: '繁体中文', us: '英文' };
-    const PANEL_STATE_KEY = 'poe2db-helper-panel-expanded';
-    const RECENT_ITEMS_KEY = 'poe2db-helper-recent-items';
-    const VISITED_PAGES_KEY = 'poe2db-helper-visited-pages';
+    const SITE_CONFIGS = {
+        poe2: {
+            id: 'poe2',
+            host: 'poe2db.tw',
+            cdnHost: 'cdn.poe2db.tw',
+            name: 'POE2DB',
+            title: 'POE2DB 助手',
+            toggleTitle: 'POE2DB 信息助手',
+            titlePattern: / - PoE2DB.*/i,
+            autocompletePrefix: 'autocompletecb'
+        },
+        poe1: {
+            id: 'poe1',
+            host: 'poedb.tw',
+            cdnHost: 'cdn.poedb.tw',
+            name: 'PoEDB',
+            title: 'PoEDB 助手',
+            toggleTitle: 'PoEDB 信息助手',
+            titlePattern: / - (流亡編年史|流亡编年史|Path of Exile Wiki).*/i,
+            autocompletePrefix: 'autocomplete'
+        }
+    };
+    const currentSite = Object.values(SITE_CONFIGS).find((site) => window.location.hostname === site.host) || SITE_CONFIGS.poe2;
+    const STORAGE_PREFIX = `poe2db-helper-${currentSite.id}`;
+    const PANEL_STATE_KEY = `${STORAGE_PREFIX}-panel-expanded`;
+    const RECENT_ITEMS_KEY = `${STORAGE_PREFIX}-recent-items`;
+    const VISITED_PAGES_KEY = `${STORAGE_PREFIX}-visited-pages`;
     const MAX_RECENT_ITEMS = 5;
     const MAX_VISITED_PAGES = 8;
     const MARKET_SERVERS = {
@@ -41,6 +68,16 @@
         autocompleteLoading: null,
         headerScriptUrl: null,
         autocompleteFiles: {}
+    };
+
+    const buildSiteUrl = (lang = 'cn', path = '') => {
+        const cleanPath = String(path || '').replace(/^\/+/, '');
+        return `https://${currentSite.host}/${lang}/${cleanPath}`;
+    };
+
+    const buildCdnUrl = (path = '') => {
+        const cleanPath = String(path || '').replace(/^\/+/, '');
+        return `https://${currentSite.cdnHost}/${cleanPath}`;
     };
 
     GM_addStyle(`
@@ -521,6 +558,10 @@
             method: 'GET',
             url,
             timeout: 12000,
+            headers: {
+                Accept: 'application/json,text/javascript,text/html,*/*;q=0.8',
+                Referer: `https://${currentSite.host}/`
+            },
             onload: (response) => {
                 if (response.status >= 200 && response.status < 300) {
                     resolve(response.responseText);
@@ -553,7 +594,7 @@
         try {
             return window.localStorage.getItem(PANEL_STATE_KEY) !== '0';
         } catch (error) {
-            console.warn('POE2DB 助手读取面板状态失败', error);
+            console.warn(`${currentSite.name} 助手读取面板状态失败`, error);
             return true;
         }
     };
@@ -562,7 +603,7 @@
         try {
             window.localStorage.setItem(PANEL_STATE_KEY, expanded ? '1' : '0');
         } catch (error) {
-            console.warn('POE2DB 助手保存面板状态失败', error);
+            console.warn(`${currentSite.name} 助手保存面板状态失败`, error);
         }
     };
 
@@ -571,7 +612,7 @@
             const parsed = JSON.parse(window.localStorage.getItem(RECENT_ITEMS_KEY) || '[]');
             return Array.isArray(parsed) ? parsed.slice(0, MAX_RECENT_ITEMS) : [];
         } catch (error) {
-            console.warn('POE2DB 助手读取最近搜索打开失败', error);
+            console.warn(`${currentSite.name} 助手读取最近搜索打开失败`, error);
             return [];
         }
     };
@@ -580,7 +621,7 @@
         try {
             window.localStorage.setItem(RECENT_ITEMS_KEY, JSON.stringify(items.slice(0, MAX_RECENT_ITEMS)));
         } catch (error) {
-            console.warn('POE2DB 助手保存最近搜索打开失败', error);
+            console.warn(`${currentSite.name} 助手保存最近搜索打开失败`, error);
         }
     };
 
@@ -600,7 +641,7 @@
             const parsed = JSON.parse(window.localStorage.getItem(VISITED_PAGES_KEY) || '[]');
             return Array.isArray(parsed) ? parsed.slice(0, MAX_VISITED_PAGES) : [];
         } catch (error) {
-            console.warn('POE2DB 助手读取最近访问失败', error);
+            console.warn(`${currentSite.name} 助手读取最近访问失败`, error);
             return [];
         }
     };
@@ -609,7 +650,7 @@
         try {
             window.localStorage.setItem(VISITED_PAGES_KEY, JSON.stringify(items.slice(0, MAX_VISITED_PAGES)));
         } catch (error) {
-            console.warn('POE2DB 助手保存最近访问失败', error);
+            console.warn(`${currentSite.name} 助手保存最近访问失败`, error);
         }
     };
 
@@ -638,7 +679,8 @@
     };
 
     const getCurrentLangAndPath = () => {
-        const match = window.location.href.match(/^https:\/\/poe2db\.tw\/(cn|tw|us)\/?(.*)$/);
+        const pattern = new RegExp(`^https://${currentSite.host.replace(/\./g, '\\.')}\\/(cn|tw|us)\\/?(.*)$`);
+        const match = window.location.href.match(pattern);
         if (!match) return null;
         return {
             lang: match[1],
@@ -647,7 +689,8 @@
     };
 
     const normalizeRelativePath = (value) => {
-        const cleaned = String(value || '').replace(/^https:\/\/poe2db\.tw\/(cn|tw|us)\//, '').replace(/^\/+/, '');
+        const sitePattern = new RegExp(`^https://${currentSite.host.replace(/\./g, '\\.')}\\/(cn|tw|us)\\/`, 'i');
+        const cleaned = String(value || '').replace(sitePattern, '').replace(/^\/+/, '');
         return cleaned || '';
     };
 
@@ -663,8 +706,9 @@
             return currentScript;
         }
 
-        const html = await requestText('https://poe2db.tw/cn/');
-        const match = html.match(/https:\/\/cdn\.poe2db\.tw\/js\/poedb_header\.[a-f0-9]+\.js/);
+        const html = await requestText(buildSiteUrl('cn'));
+        const cdnPattern = new RegExp(`https://${currentSite.cdnHost.replace(/\./g, '\\.')}\\/js\\/poedb_header\\.[a-f0-9]+\\.js`, 'i');
+        const match = html.match(cdnPattern);
         if (!match) throw new Error('没有找到 poedb_header 脚本');
 
         state.headerScriptUrl = match[0];
@@ -674,8 +718,8 @@
     const parseAutocompleteFiles = (headerJs) => {
         const files = {};
         for (const lang of LANGS) {
-            const match = headerJs.match(new RegExp(`autocompletecb_${lang}\\.[a-z0-9]+\\.json`, 'i'));
-            if (match) files[lang] = `https://cdn.poe2db.tw/json/${match[0]}`;
+            const match = headerJs.match(new RegExp(`${currentSite.autocompletePrefix}_${lang}\\.[a-z0-9]+\\.json`, 'i'));
+            if (match) files[lang] = buildCdnUrl(`json/${match[0]}`);
         }
         return files;
     };
@@ -728,7 +772,7 @@
                     .map((result, index) => ({ result, lang: LANGS[index] }))
                     .filter((entry) => entry.result.status === 'rejected');
 
-                failures.forEach((entry) => console.warn(`POE2DB ${entry.lang} 搜索数据加载失败`, entry.result.reason));
+                failures.forEach((entry) => console.warn(`${currentSite.name} ${entry.lang} 搜索数据加载失败`, entry.result.reason));
 
                 const loadedLangs = LANGS.filter((lang) => state.searchIndex[lang]?.length);
                 if (!loadedLangs.length) {
@@ -814,7 +858,7 @@
         for (const selector of selectors) {
             const element = doc.querySelector(selector);
             const text = element ? element.textContent.trim().replace(/\s+/g, ' ') : '';
-            if (text) return { title: text.replace(/ - PoE2DB.*/i, '') };
+            if (text) return { title: text.replace(currentSite.titlePattern, '') };
         }
 
         return { title: 'N/A' };
@@ -825,7 +869,7 @@
             return extractInfoFromDocument(document);
         }
 
-        const html = await requestText(`https://poe2db.tw/${lang}/${path}`);
+        const html = await requestText(buildSiteUrl(lang, path));
         const doc = new DOMParser().parseFromString(html, 'text/html');
         return extractInfoFromDocument(doc);
     };
@@ -865,12 +909,12 @@
 
     const openSearchResult = (result, lang) => {
         rememberRecentItem(result, lang);
-        window.location.href = `https://poe2db.tw/${lang}/${result.path}`;
+        window.location.href = buildSiteUrl(lang, result.path);
     };
 
     const openVisitedPage = (entry) => {
         const lang = LANGS.includes(entry.lastLang) ? entry.lastLang : 'cn';
-        window.location.href = `https://poe2db.tw/${lang}/${entry.path}`;
+        window.location.href = buildSiteUrl(lang, entry.path);
     };
 
     const getResultLabel = (result, lang) => result.labels?.[lang] || result.labels?.cn || result.labels?.tw || result.labels?.us || result.path;
@@ -1049,6 +1093,9 @@
             const nameHtml = isCurrent
                 ? `<div class="poe-helper-name poe-helper-name-current">${escapeHtml(title)}</div>`
                 : `<button class="poe-helper-name poe-helper-name-switch" data-action="switch-lang" data-lang="${lang}" data-path="${escapeHtml(path)}" type="button" title="切换到${LANG_NAMES[lang]}页面">${escapeHtml(title)}</button>`;
+            const buyButton = currentSite.id === 'poe2'
+                ? `<button class="poe-helper-btn poe-helper-buy" data-action="buy" data-name="${escapeHtml(title)}" data-lang="${lang}">购买</button>`
+                : '';
             return `
                 <div class="poe-helper-section">
                     <div class="poe-helper-section-title">
@@ -1059,7 +1106,7 @@
                         ${nameHtml}
                         <div class="poe-helper-actions">
                             <button class="poe-helper-btn" data-action="copy" data-name="${escapeHtml(title)}">复制</button>
-                            <button class="poe-helper-btn poe-helper-buy" data-action="buy" data-name="${escapeHtml(title)}" data-lang="${lang}">购买</button>
+                            ${buyButton}
                         </div>
                     </div>
                 </div>
@@ -1084,7 +1131,7 @@
 
         content.querySelectorAll('[data-action="switch-lang"]').forEach((button) => {
             button.addEventListener('click', () => {
-                window.location.href = `https://poe2db.tw/${button.dataset.lang}/${button.dataset.path}`;
+                window.location.href = buildSiteUrl(button.dataset.lang, button.dataset.path);
             });
         });
 
@@ -1094,7 +1141,7 @@
     const loadPanelInfo = async (panel) => {
         const current = getCurrentLangAndPath();
         if (!current) {
-            panel.querySelector('.poe-helper-content').innerHTML = '<div class="poe-helper-empty">当前页面不是 POE2DB 语言页面</div>';
+            panel.querySelector('.poe-helper-content').innerHTML = `<div class="poe-helper-empty">当前页面不是 ${currentSite.name} 语言页面</div>`;
             return;
         }
 
@@ -1117,7 +1164,7 @@
         panel.className = 'poe-helper-panel';
         panel.innerHTML = `
             <div class="poe-helper-header">
-                <div class="poe-helper-title">POE2DB 助手</div>
+                <div class="poe-helper-title">${currentSite.title}</div>
                 <button class="poe-helper-close" title="关闭">×</button>
             </div>
             <div class="poe-helper-module">
@@ -1195,7 +1242,7 @@
         if (state.toggle) return;
         const button = document.createElement('button');
         button.className = 'poe-helper-toggle';
-        button.textContent = 'POE2DB 信息助手';
+        button.textContent = currentSite.toggleTitle;
         button.addEventListener('click', togglePanel);
         document.body.appendChild(button);
         state.toggle = button;
@@ -1214,3 +1261,4 @@
         start();
     }
 })();
+
