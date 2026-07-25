@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         POE2DB 多语言信息助手
 // @namespace    http://tampermonkey.net/
-// @version      3.5.0
-// @lastUpdated  2026-07-26 03:35:00 +08:00
+// @version      3.5.1
+// @lastUpdated  2026-07-26 04:05:00 +08:00
 // @description  PoEDB/POE2DB 多语言名称、三语搜索与复制助手
 // @author       维克牛
 // @contact      https://nga.178.com/nuke.php?func=ucp&uid=6888984
@@ -79,6 +79,49 @@
         const cleanPath = String(path || '').replace(/^\/+/, '');
         return `https://${currentSite.cdnHost}/${cleanPath}`;
     };
+
+    const TC_TO_SC_MAP = {
+        '裝': '装', '備': '备', '詞': '词', '條': '条', '寶': '宝', '鑽': '钻', '飾': '饰', '護': '护', '藥': '药',
+        '劑': '剂', '術': '术', '輔': '辅', '助': '助', '輕': '轻', '擊': '击', '傷': '伤', '害': '害', '閃': '闪',
+        '電': '电', '冰': '冰', '霜': '霜', '寒': '寒', '熱': '热', '燒': '烧', '燃': '燃', '焰': '焰', '熾': '炽',
+        '圖': '图', '騰': '腾', '陷': '陷', '阱': '阱', '礦': '矿', '獄': '狱', '獵': '猎', '獸': '兽', '靈': '灵',
+        '魂': '魂', '詛': '诅', '咒': '咒', '詠': '咏', '喚': '唤', '召': '召', '離': '离', '轉': '转', '傳': '传',
+        '遞': '递', '進': '进', '退': '退', '變': '变', '異': '异', '狀': '状', '態': '态', '範': '范', '圍': '围',
+        '區': '区', '域': '域', '強': '强', '化': '化', '增': '增', '減': '减', '緩': '缓', '速': '速', '時間': '时间',
+        '時': '时', '間': '间', '啟': '启', '動': '动', '觸': '触', '發': '发', '導': '导', '聯': '联', '結': '结',
+        '連': '连', '漣': '涟', '鏈': '链', '鎖': '锁', '釋': '释', '放': '放', '屬': '属', '性': '性', '點': '点', '勢': '势',
+        '權': '权', '威': '威', '奧': '奥', '爾': '尔', '祕': '秘', '秘': '秘', '符': '符', '殘': '残', '片': '片',
+        '啟': '启', '虛': '虚', '空': '空', '夢': '梦', '願': '愿', '望': '望', '統': '统', '禦': '御', '眾': '众',
+        '聖': '圣', '殿': '殿', '堂': '堂', '覺': '觉', '醒': '醒', '範': '范', '識': '识', '實': '实', '體': '体',
+        '氣': '气', '會': '会', '與': '与', '為': '为', '無': '无', '於': '于', '內': '内', '雙': '双', '萬': '万',
+        '龍': '龙', '馬': '马', '魚': '鱼', '鳥': '鸟', '顱': '颅', '頭': '头', '髮': '发', '顏': '颜', '頁': '页',
+        '顯': '显', '隱': '隐', '刪': '删', '過': '过', '還': '还', '這': '这', '個': '个', '開': '开', '關': '关',
+        '門': '门', '風': '风', '雲': '云', '聲': '声', '響': '响', '學': '学', '習': '习', '戰': '战', '鬥': '斗',
+        '衝': '冲', '機': '机', '構': '构', '標': '标', '記': '记', '號': '号', '級': '级', '階': '阶', '靈': '灵',
+        '寵': '宠', '僕': '仆', '夥': '伙', '隊': '队', '總': '总', '經': '经', '驗': '验', '價': '价', '買': '买',
+        '賣': '卖', '貪': '贪', '懼': '惧', '懲': '惩', '罰': '罚', '審': '审', '判': '判', '鋼': '钢', '鐵': '铁',
+        '銅': '铜', '銀': '银', '鋒': '锋', '鋭': '锐', '銳': '锐', '錘': '锤', '劍': '剑', '弓': '弓', '槍': '枪',
+        '杖': '杖', '錫': '锡', '鑄': '铸', '鍊': '炼', '煉': '炼', '淨': '净', '濾': '滤', '濃': '浓', '淺': '浅',
+        '滅': '灭', '濕': '湿', '潛': '潜', '潑': '泼', '潔': '洁', '歲': '岁', '葉': '叶', '藍': '蓝', '蘇': '苏',
+        '薩': '萨', '薔': '蔷', '蘊': '蕴', '蠻': '蛮', '蠍': '蝎', '蠟': '蜡', '蠅': '蝇', '蝕': '蚀', '蟲': '虫',
+        '視': '视', '覺': '觉', '親': '亲', '觀': '观', '規': '规', '詭': '诡', '計': '计', '訓': '训', '試': '试',
+        '證': '证', '詩': '诗', '話': '话', '說': '说', '誰': '谁', '讀': '读', '貴': '贵', '賊': '贼', '賦': '赋',
+        '質': '质', '負': '负', '財': '财', '貨': '货', '貝': '贝', '贈': '赠', '趙': '赵', '趨': '趋', '軀': '躯',
+        '車': '车', '軸': '轴', '載': '载', '轟': '轰', '達': '达', '遷': '迁', '遙': '遥', '選': '选', '邊': '边',
+        '遺': '遗', '鄰': '邻', '醫': '医', '針': '针', '鈍': '钝', '鐘': '钟', '鐘': '钟', '鍾': '钟', '鎮': '镇',
+        '鏡': '镜', '長': '长', '門': '门', '閃': '闪', '閉': '闭', '開': '开', '間': '间', '陣': '阵', '陽': '阳',
+        '陰': '阴', '險': '险', '隨': '随', '雙': '双', '難': '难', '現': '现', '霧': '雾', '靜': '静', '韌': '韧', '響': '响',
+        '頂': '顶', '領': '领', '頭': '头', '額': '额', '顫': '颤', '飛': '飞', '飢': '饥', '飲': '饮', '餘': '余',
+        '騎': '骑', '騙': '骗', '驅': '驱', '驚': '惊', '驟': '骤', '骯': '肮', '體': '体', '髒': '脏', '鬱': '郁',
+        '魘': '魇', '魯': '鲁', '鮮': '鲜', '鱗': '鳞', '鷹': '鹰', '鹽': '盐', '麗': '丽', '麵': '面', '麼': '么',
+        '黃': '黄', '點': '点', '齊': '齐', '齒': '齿', '龍': '龙', '龜': '龟'
+    };
+
+    const normalizeSearchText = (text) => String(text || '')
+        .toLowerCase()
+        .replace(/[，。．·]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .replace(/[\u3400-\u9fff]/g, (char) => TC_TO_SC_MAP[char] || char);
 
     GM_addStyle(`
         .poe-helper-toggle {
@@ -690,7 +733,10 @@
 
     const normalizeRelativePath = (value) => {
         const sitePattern = new RegExp(`^https://${currentSite.host.replace(/\./g, '\\.')}\\/(cn|tw|us)\\/`, 'i');
-        const cleaned = String(value || '').replace(sitePattern, '').replace(/^\/+/, '');
+        const cleaned = String(value || '')
+            .replace(sitePattern, '')
+            .replace(/^\/+/, '')
+            .replace(/^(cn|tw|us)\//i, '');
         return cleaned || '';
     };
 
@@ -741,8 +787,11 @@
                 label,
                 desc,
                 labelLower: String(label).toLowerCase(),
+                labelNormalized: normalizeSearchText(label),
                 valueLower: String(value).toLowerCase(),
-                searchText: `${label} ${desc} ${value}`.toLowerCase()
+                valueNormalized: normalizeSearchText(value),
+                searchText: `${label} ${desc} ${value}`.toLowerCase(),
+                searchTextNormalized: normalizeSearchText(`${label} ${desc} ${value}`)
             };
         }).filter((item) => item.path);
     };
@@ -791,6 +840,7 @@
 
     const findSearchResults = (query) => {
         const q = query.trim().toLowerCase();
+        const qNormalized = normalizeSearchText(query.trim());
         if (!q) return [];
 
         const groups = new Map();
@@ -799,9 +849,15 @@
             let langMatches = 0;
 
             for (const item of state.searchIndex[lang] || []) {
-                if (!item.searchText.includes(q)) continue;
+                if (!item.searchText.includes(q) && !item.searchTextNormalized.includes(qNormalized)) continue;
 
-                const score = item.labelLower === q ? 0 : item.labelLower.startsWith(q) ? 1 : item.valueLower.includes(q) ? 2 : 3;
+                const score = item.labelLower === q || item.labelNormalized === qNormalized
+                    ? 0
+                    : item.labelLower.startsWith(q) || item.labelNormalized.startsWith(qNormalized)
+                        ? 1
+                        : item.valueLower.includes(q) || item.valueNormalized.includes(qNormalized)
+                            ? 2
+                            : 3;
                 const existing = groups.get(item.path);
 
                 if (!existing) {
