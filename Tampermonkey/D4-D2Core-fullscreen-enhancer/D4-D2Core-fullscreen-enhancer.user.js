@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         D4 D2Core规划器全屏增强
 // @namespace    local.codex.d2core.d4
-// @version      1.1.0
+// @version      1.1.1
 // @updated      2026-09-29
 // @description  增强D2Core页面内全屏：支持总览/技能/巅峰/雇佣兵切换、Esc退出及巅峰面板与雕文
 // @author       维克牛
@@ -21,6 +21,7 @@
   const CUSTOM_FULLSCREEN_CLASS = "d2core-custom-module-fullscreen";
   const NAV_CLASS = "d2core-fullscreen-nav";
   const EXIT_CLASS = "d2core-fullscreen-exit";
+  const TRANSITION_CLASS = "d2core-fullscreen-transition";
   const OVERVIEW_CLONE_CLASS = "d2core-overview-clone";
   const STYLE_ID = "d2core-fullscreen-enhancer-style";
   const MODULES = [
@@ -34,6 +35,8 @@
 
   let cachedOverview = null;
   let syncQueued = false;
+  let transitionTarget = null;
+  let transitionTimer = null;
 
   const style = document.createElement("style");
   style.id = STYLE_ID;
@@ -94,6 +97,21 @@
     .${EXIT_CLASS}:hover {
       color: #fff;
       background: rgba(70, 70, 70, 0.98);
+    }
+
+    .${TRANSITION_CLASS} {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483647;
+      opacity: 1;
+      pointer-events: auto;
+      background: #151515;
+      transition: opacity 120ms ease;
+    }
+
+    .${TRANSITION_CLASS}.is-leaving {
+      opacity: 0;
+      pointer-events: none;
     }
 
     .build-variants__panel.${CUSTOM_FULLSCREEN_CLASS} {
@@ -177,6 +195,45 @@
       .find((button) => isVisible(button) && button.textContent.trim() === "全屏") || null;
   }
 
+  function abortTransition() {
+    transitionTarget = null;
+    window.clearTimeout(transitionTimer);
+    transitionTimer = null;
+    document.querySelector(`.${TRANSITION_CLASS}`)?.remove();
+  }
+
+  function beginTransition(module) {
+    abortTransition();
+    transitionTarget = module;
+
+    const cover = document.createElement("div");
+    cover.className = TRANSITION_CLASS;
+    cover.setAttribute("aria-hidden", "true");
+    document.body.appendChild(cover);
+
+    transitionTimer = window.setTimeout(() => {
+      console.error(`[D2Core 全屏增强] 切换到${module}超时，已撤除过渡遮罩。`);
+      abortTransition();
+    }, 2500);
+  }
+
+  function finishTransition(module) {
+    if (transitionTarget !== module) return;
+
+    transitionTarget = null;
+    window.clearTimeout(transitionTimer);
+    transitionTimer = null;
+    const cover = document.querySelector(`.${TRANSITION_CLASS}`);
+    if (!cover) return;
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        cover.classList.add("is-leaving");
+        window.setTimeout(() => cover.remove(), 140);
+      });
+    });
+  }
+
   function enterModuleFullscreen(module, attempt = 0) {
     const config = MODULES.find((item) => item.key === module);
     if (!config) return;
@@ -196,6 +253,7 @@
         window.setTimeout(() => enterModuleFullscreen(module, attempt + 1), 50);
       } else {
         console.error(`[D2Core 全屏增强] 找不到${config.label}面板。`);
+        abortTransition();
       }
       return;
     }
@@ -210,6 +268,7 @@
       window.setTimeout(() => enterModuleFullscreen(module, attempt + 1), 50);
     } else {
       console.error(`[D2Core 全屏增强] 找不到${config.label}全屏按钮。`);
+      abortTransition();
     }
   }
 
@@ -233,6 +292,7 @@
     if (!active || !tab || active.module === module) return;
 
     if (module === "paragon") cacheOverview();
+    beginTransition(module);
     exitActiveFullscreen(active);
     tab.click();
     window.setTimeout(() => enterModuleFullscreen(module), 0);
@@ -327,6 +387,7 @@
     });
 
     if (active.module === "paragon") addOverview(active.root);
+    finishTransition(active.module);
   }
 
   function queueSync() {
@@ -350,6 +411,7 @@
 
     event.preventDefault();
     event.stopImmediatePropagation();
+    abortTransition();
     exitActiveFullscreen(active);
   }, true);
 
