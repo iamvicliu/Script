@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         D4 D2Core规划器全屏增强
 // @namespace    local.codex.d2core.d4
-// @version      1.2.0
+// @version      1.2.1
 // @updated      2026-09-29
 // @description  增强D2Core页面内全屏：支持模块和BD变体切换、Esc退出及巅峰面板与雕文
 // @author       维克牛
@@ -23,8 +23,6 @@
   const EXIT_CLASS = "d2core-fullscreen-exit";
   const ENTRY_CLASS = "d2core-module-fullscreen-entry";
   const VARIANT_SELECT_CLASS = "d2core-fullscreen-variant";
-  const OVERVIEW_TOGGLE_CLASS = "d2core-overview-toggle";
-  const OVERVIEW_COLLAPSED_CLASS = "d2core-overview-collapsed";
   const TRANSITION_CLASS = "d2core-fullscreen-transition";
   const OVERVIEW_CLONE_CLASS = "d2core-overview-clone";
   const STYLE_ID = "d2core-fullscreen-enhancer-style";
@@ -41,7 +39,6 @@
   let syncQueued = false;
   let transitionTarget = null;
   let transitionTimer = null;
-  let overviewCollapsed = false;
 
   const style = document.createElement("style");
   style.id = STYLE_ID;
@@ -93,14 +90,6 @@
       background: #292929;
       font: 14px/30px system-ui, sans-serif;
       cursor: pointer;
-    }
-
-    .${NAV_CLASS} .${OVERVIEW_TOGGLE_CLASS} {
-      min-width: 88px;
-    }
-
-    .${NAV_CLASS} .${OVERVIEW_TOGGLE_CLASS}[hidden] {
-      display: none !important;
     }
 
     .build-variants__panel:has(> .${ENTRY_CLASS}) {
@@ -209,14 +198,6 @@
       box-sizing: border-box !important;
       visibility: visible !important;
       background: #222 !important;
-    }
-
-    .paragon-planner.fullscreen.${ENHANCED_CLASS}.${OVERVIEW_COLLAPSED_CLASS} #paragon-planner-content {
-      height: calc(100vh - 44px) !important;
-    }
-
-    .paragon-planner.fullscreen.${ENHANCED_CLASS}.${OVERVIEW_COLLAPSED_CLASS} .${OVERVIEW_CLONE_CLASS} {
-      display: none !important;
     }
 
     @media (max-width: 900px) {
@@ -462,17 +443,6 @@
       nav.appendChild(button);
     });
 
-    const overviewToggle = document.createElement("button");
-    overviewToggle.type = "button";
-    overviewToggle.className = OVERVIEW_TOGGLE_CLASS;
-    overviewToggle.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      overviewCollapsed = !overviewCollapsed;
-      queueSync();
-    });
-    nav.appendChild(overviewToggle);
-
     return nav;
   }
 
@@ -524,9 +494,9 @@
   }
 
   function clearEnhancements(activeRoot = null) {
-    document.querySelectorAll(`.${ENHANCED_CLASS}, .${CUSTOM_FULLSCREEN_CLASS}, .${OVERVIEW_COLLAPSED_CLASS}`).forEach((element) => {
+    document.querySelectorAll(`.${ENHANCED_CLASS}, .${CUSTOM_FULLSCREEN_CLASS}`).forEach((element) => {
       if (element !== activeRoot) {
-        element.classList.remove(ENHANCED_CLASS, CUSTOM_FULLSCREEN_CLASS, OVERVIEW_COLLAPSED_CLASS);
+        element.classList.remove(ENHANCED_CLASS, CUSTOM_FULLSCREEN_CLASS);
       }
     });
     document.querySelectorAll(`.${NAV_CLASS}, .${EXIT_CLASS}, .${OVERVIEW_CLONE_CLASS}`).forEach((element) => {
@@ -572,20 +542,7 @@
       variantSelect.value = String(selectedVariant);
     }
 
-    const overviewToggle = nav.querySelector(`.${OVERVIEW_TOGGLE_CLASS}`);
-    if (overviewToggle) {
-      const hidden = active.module !== "paragon";
-      const label = overviewCollapsed ? "展开面板" : "折叠面板";
-      const pressed = String(overviewCollapsed);
-      if (overviewToggle.hidden !== hidden) overviewToggle.hidden = hidden;
-      if (overviewToggle.textContent !== label) overviewToggle.textContent = label;
-      if (overviewToggle.getAttribute("aria-pressed") !== pressed) {
-        overviewToggle.setAttribute("aria-pressed", pressed);
-      }
-    }
-
     if (active.module === "paragon") {
-      active.root.classList.toggle(OVERVIEW_COLLAPSED_CLASS, overviewCollapsed);
       addOverview(active.root);
     }
     finishTransition(active.module);
