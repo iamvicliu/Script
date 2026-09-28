@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         D4 D2Core规划器全屏增强
+// @name         暗黑核-暗黑破坏神4 BD增强
 // @namespace    local.codex.d2core.d4
-// @version      1.2.1
+// @version      1.2.2
 // @updated      2026-09-29
-// @description  增强D2Core页面内全屏：支持模块和BD变体切换、Esc退出及巅峰面板与雕文
+// @description  增强暗黑核BD页面：支持全屏模块和BD变体切换、Esc退出及巅峰面板与雕文
 // @author       维克牛
 // @license      MIT
 // @homepageURL  https://github.com/iamvicliu/Script/tree/main/Tampermonkey/D4-D2Core-fullscreen-enhancer
@@ -277,7 +277,7 @@
     document.body.appendChild(cover);
 
     transitionTimer = window.setTimeout(() => {
-      console.error(`[D2Core 全屏增强] 切换到${module}超时，已撤除过渡遮罩。`);
+      console.error(`[暗黑核 BD增强] 切换到${module}超时，已撤除过渡遮罩。`);
       abortTransition();
     }, 4000);
   }
@@ -320,7 +320,7 @@
       if (attempt < 20) {
         window.setTimeout(() => enterModuleFullscreen(module, attempt + 1), 50);
       } else {
-        console.error(`[D2Core 全屏增强] 找不到${config.label}面板。`);
+        console.error(`[暗黑核 BD增强] 找不到${config.label}面板。`);
         abortTransition();
       }
       return;
@@ -335,7 +335,7 @@
     if (attempt < 20) {
       window.setTimeout(() => enterModuleFullscreen(module, attempt + 1), 50);
     } else {
-      console.error(`[D2Core 全屏增强] 找不到${config.label}全屏按钮。`);
+      console.error(`[暗黑核 BD增强] 找不到${config.label}全屏按钮。`);
       abortTransition();
     }
   }
@@ -371,7 +371,7 @@
       if (attempt < 80) {
         window.setTimeout(() => continueVariantSwitch(module, targetIndex, attempt + 1), 50);
       } else {
-        console.error("[D2Core 全屏增强] BD变体切换超时。");
+        console.error("[暗黑核 BD增强] BD变体切换超时。");
         abortTransition();
       }
       return;
