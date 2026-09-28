@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         D4 D2Core规划器全屏增强
 // @namespace    local.codex.d2core.d4
-// @version      1.1.1
+// @version      1.2.0
 // @updated      2026-09-29
-// @description  增强D2Core页面内全屏：支持总览/技能/巅峰/雇佣兵切换、Esc退出及巅峰面板与雕文
+// @description  增强D2Core页面内全屏：支持模块和BD变体切换、Esc退出及巅峰面板与雕文
 // @author       维克牛
 // @license      MIT
 // @homepageURL  https://github.com/iamvicliu/Script/tree/main/Tampermonkey/D4-D2Core-fullscreen-enhancer
@@ -21,6 +21,10 @@
   const CUSTOM_FULLSCREEN_CLASS = "d2core-custom-module-fullscreen";
   const NAV_CLASS = "d2core-fullscreen-nav";
   const EXIT_CLASS = "d2core-fullscreen-exit";
+  const ENTRY_CLASS = "d2core-module-fullscreen-entry";
+  const VARIANT_SELECT_CLASS = "d2core-fullscreen-variant";
+  const OVERVIEW_TOGGLE_CLASS = "d2core-overview-toggle";
+  const OVERVIEW_COLLAPSED_CLASS = "d2core-overview-collapsed";
   const TRANSITION_CLASS = "d2core-fullscreen-transition";
   const OVERVIEW_CLONE_CLASS = "d2core-overview-clone";
   const STYLE_ID = "d2core-fullscreen-enhancer-style";
@@ -37,6 +41,7 @@
   let syncQueued = false;
   let transitionTarget = null;
   let transitionTimer = null;
+  let overviewCollapsed = false;
 
   const style = document.createElement("style");
   style.id = STYLE_ID;
@@ -76,6 +81,55 @@
     .${NAV_CLASS} button[aria-pressed="true"] {
       color: #ffd33d;
       background: rgba(255, 211, 61, 0.12);
+    }
+
+    .${VARIANT_SELECT_CLASS} {
+      width: min(240px, 28vw);
+      height: 30px;
+      padding: 0 28px 0 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 3px;
+      color: #ddd;
+      background: #292929;
+      font: 14px/30px system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .${NAV_CLASS} .${OVERVIEW_TOGGLE_CLASS} {
+      min-width: 88px;
+    }
+
+    .${NAV_CLASS} .${OVERVIEW_TOGGLE_CLASS}[hidden] {
+      display: none !important;
+    }
+
+    .build-variants__panel:has(> .${ENTRY_CLASS}) {
+      position: relative !important;
+    }
+
+    .${ENTRY_CLASS} {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 20;
+      height: 34px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 4px;
+      color: #ddd;
+      background: rgba(52, 52, 52, 0.94);
+      font: 15px/34px system-ui, sans-serif;
+      cursor: pointer;
+      box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .${ENTRY_CLASS}:hover {
+      color: #fff;
+      background: rgba(70, 70, 70, 0.98);
+    }
+
+    .build-variants__panel.${CUSTOM_FULLSCREEN_CLASS} > .${ENTRY_CLASS} {
+      display: none !important;
     }
 
     .${EXIT_CLASS} {
@@ -156,6 +210,26 @@
       visibility: visible !important;
       background: #222 !important;
     }
+
+    .paragon-planner.fullscreen.${ENHANCED_CLASS}.${OVERVIEW_COLLAPSED_CLASS} #paragon-planner-content {
+      height: calc(100vh - 44px) !important;
+    }
+
+    .paragon-planner.fullscreen.${ENHANCED_CLASS}.${OVERVIEW_COLLAPSED_CLASS} .${OVERVIEW_CLONE_CLASS} {
+      display: none !important;
+    }
+
+    @media (max-width: 900px) {
+      .${NAV_CLASS} {
+        max-width: calc(100vw - 120px);
+        overflow-x: auto;
+      }
+
+      .${VARIANT_SELECT_CLASS} {
+        width: 180px;
+        flex: 0 0 180px;
+      }
+    }
   `;
   document.head.appendChild(style);
 
@@ -195,6 +269,16 @@
       .find((button) => isVisible(button) && button.textContent.trim() === "全屏") || null;
   }
 
+  function getVariantButtons() {
+    return [...document.querySelectorAll(".variant-tabs__variants [role=button]")]
+      .filter((button) => button.getAttribute("aria-disabled") !== "true");
+  }
+
+  function getSelectedVariantIndex() {
+    return getVariantButtons()
+      .findIndex((button) => button.getAttribute("aria-pressed") === "true");
+  }
+
   function abortTransition() {
     transitionTarget = null;
     window.clearTimeout(transitionTimer);
@@ -214,7 +298,7 @@
     transitionTimer = window.setTimeout(() => {
       console.error(`[D2Core 全屏增强] 切换到${module}超时，已撤除过渡遮罩。`);
       abortTransition();
-    }, 2500);
+    }, 4000);
   }
 
   function finishTransition(module) {
@@ -239,7 +323,10 @@
     if (!config) return;
 
     const active = getActiveFullscreen();
-    if (active?.module === module) return;
+    if (active?.module === module) {
+      finishTransition(module);
+      return;
+    }
 
     if (!config.nativeFullscreen) {
       const panel = document.querySelector(`#variant-panel-${module}`);
@@ -298,11 +385,68 @@
     window.setTimeout(() => enterModuleFullscreen(module), 0);
   }
 
+  function continueVariantSwitch(module, targetIndex, attempt = 0) {
+    if (getSelectedVariantIndex() !== targetIndex) {
+      if (attempt < 80) {
+        window.setTimeout(() => continueVariantSwitch(module, targetIndex, attempt + 1), 50);
+      } else {
+        console.error("[D2Core 全屏增强] BD变体切换超时。");
+        abortTransition();
+      }
+      return;
+    }
+
+    const tab = document.querySelector(`#variant-tab-${module}`);
+    if (!tab) {
+      abortTransition();
+      return;
+    }
+
+    if (tab.getAttribute("aria-selected") !== "true") tab.click();
+    if (module === "paragon") cacheOverview();
+    window.setTimeout(() => enterModuleFullscreen(module), 0);
+  }
+
+  function switchVariant(targetIndex) {
+    const active = getActiveFullscreen();
+    const variants = getVariantButtons();
+    const target = variants[targetIndex];
+    if (!active || !target || target.getAttribute("aria-pressed") === "true") return;
+
+    const module = active.module;
+    beginTransition(module);
+    exitActiveFullscreen(active);
+    target.click();
+    window.setTimeout(() => continueVariantSwitch(module, targetIndex), 0);
+  }
+
+  function createVariantSelect() {
+    const select = document.createElement("select");
+    select.className = VARIANT_SELECT_CLASS;
+    select.setAttribute("aria-label", "切换BD变体");
+    select.title = "切换BD变体";
+
+    getVariantButtons().forEach((variant, index) => {
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = variant.getAttribute("aria-label") || variant.textContent.trim();
+      option.selected = variant.getAttribute("aria-pressed") === "true";
+      select.appendChild(option);
+    });
+
+    select.addEventListener("change", (event) => {
+      event.stopPropagation();
+      switchVariant(Number(select.value));
+    });
+    return select;
+  }
+
   function createNavigation(activeModule) {
     const nav = document.createElement("div");
     nav.className = NAV_CLASS;
     nav.setAttribute("role", "group");
     nav.setAttribute("aria-label", "全屏模块切换");
+    nav.appendChild(createVariantSelect());
 
     MODULES.forEach(({ key, label }) => {
       const button = document.createElement("button");
@@ -318,7 +462,42 @@
       nav.appendChild(button);
     });
 
+    const overviewToggle = document.createElement("button");
+    overviewToggle.type = "button";
+    overviewToggle.className = OVERVIEW_TOGGLE_CLASS;
+    overviewToggle.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      overviewCollapsed = !overviewCollapsed;
+      queueSync();
+    });
+    nav.appendChild(overviewToggle);
+
     return nav;
+  }
+
+  function createEntryButton(module, label) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = ENTRY_CLASS;
+    button.dataset.module = module;
+    button.textContent = "全屏";
+    button.title = `${label}全屏`;
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      beginTransition(module);
+      enterModuleFullscreen(module);
+    });
+    return button;
+  }
+
+  function ensureEntryButtons() {
+    MODULES.filter((item) => !item.nativeFullscreen).forEach(({ key, label }) => {
+      const panel = document.querySelector(`#variant-panel-${key}`);
+      if (!panel || panel.querySelector(`.${ENTRY_CLASS}`)) return;
+      panel.appendChild(createEntryButton(key, label));
+    });
   }
 
   function createExitButton() {
@@ -345,9 +524,9 @@
   }
 
   function clearEnhancements(activeRoot = null) {
-    document.querySelectorAll(`.${ENHANCED_CLASS}, .${CUSTOM_FULLSCREEN_CLASS}`).forEach((element) => {
+    document.querySelectorAll(`.${ENHANCED_CLASS}, .${CUSTOM_FULLSCREEN_CLASS}, .${OVERVIEW_COLLAPSED_CLASS}`).forEach((element) => {
       if (element !== activeRoot) {
-        element.classList.remove(ENHANCED_CLASS, CUSTOM_FULLSCREEN_CLASS);
+        element.classList.remove(ENHANCED_CLASS, CUSTOM_FULLSCREEN_CLASS, OVERVIEW_COLLAPSED_CLASS);
       }
     });
     document.querySelectorAll(`.${NAV_CLASS}, .${EXIT_CLASS}, .${OVERVIEW_CLONE_CLASS}`).forEach((element) => {
@@ -358,6 +537,7 @@
   function syncEnhancements() {
     syncQueued = false;
     cacheOverview();
+    ensureEntryButtons();
 
     const active = getActiveFullscreen();
     if (!active) {
@@ -386,7 +566,28 @@
       }
     });
 
-    if (active.module === "paragon") addOverview(active.root);
+    const variantSelect = nav.querySelector(`.${VARIANT_SELECT_CLASS}`);
+    const selectedVariant = getSelectedVariantIndex();
+    if (variantSelect && selectedVariant >= 0 && variantSelect.value !== String(selectedVariant)) {
+      variantSelect.value = String(selectedVariant);
+    }
+
+    const overviewToggle = nav.querySelector(`.${OVERVIEW_TOGGLE_CLASS}`);
+    if (overviewToggle) {
+      const hidden = active.module !== "paragon";
+      const label = overviewCollapsed ? "展开面板" : "折叠面板";
+      const pressed = String(overviewCollapsed);
+      if (overviewToggle.hidden !== hidden) overviewToggle.hidden = hidden;
+      if (overviewToggle.textContent !== label) overviewToggle.textContent = label;
+      if (overviewToggle.getAttribute("aria-pressed") !== pressed) {
+        overviewToggle.setAttribute("aria-pressed", pressed);
+      }
+    }
+
+    if (active.module === "paragon") {
+      active.root.classList.toggle(OVERVIEW_COLLAPSED_CLASS, overviewCollapsed);
+      addOverview(active.root);
+    }
     finishTransition(active.module);
   }
 
