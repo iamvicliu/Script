@@ -8,7 +8,6 @@
 
 - 全屏顶部增加“总览 / 技能 / 巅峰 / 雇佣兵”切换栏。
 - 四个模块可以在全屏状态下直接切换，无需反复退出全屏。
-- 总览和雇佣兵也可以全屏查看。
 - 总览和雇佣兵普通页面增加“全屏”入口。
 - 全屏顶部可以直接切换当前 BD 的不同变体。
 - 当前模块使用黄色高亮显示。
@@ -28,8 +27,6 @@
 
 ## 安装入口
 
-- GitHub 源码及说明：
-  `https://github.com/iamvicliu/Script/tree/main/Tampermonkey/D4-D2Core-fullscreen-enhancer`
 - GitHub 直装地址：
   `https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/D4-D2Core-fullscreen-enhancer/D4-D2Core-fullscreen-enhancer.user.js`
 - 国内用户可从 Gitee 镜像安装：
