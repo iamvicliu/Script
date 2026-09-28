@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         D4 D2Core规划器全屏增强
 // @namespace    local.codex.d2core.d4
-// @version      1.0.1
-// @updated      2026-09-28
-// @description  增强D2Core自带全屏：支持技能/巅峰切换，并显示巅峰的面板与雕文
+// @version      1.1.0
+// @updated      2026-09-29
+// @description  增强D2Core页面内全屏：支持总览/技能/巅峰/雇佣兵切换、Esc退出及巅峰面板与雕文
 // @author       维克牛
 // @license      MIT
 // @homepageURL  https://github.com/iamvicliu/Script/tree/main/Tampermonkey/D4-D2Core-fullscreen-enhancer
@@ -18,10 +18,17 @@
   "use strict";
 
   const ENHANCED_CLASS = "d2core-enhanced-site-fullscreen";
+  const CUSTOM_FULLSCREEN_CLASS = "d2core-custom-module-fullscreen";
   const NAV_CLASS = "d2core-fullscreen-nav";
+  const EXIT_CLASS = "d2core-fullscreen-exit";
   const OVERVIEW_CLONE_CLASS = "d2core-overview-clone";
   const STYLE_ID = "d2core-fullscreen-enhancer-style";
-  const MODULES = ["skills", "paragon"];
+  const MODULES = [
+    { key: "equipment", label: "总览", nativeFullscreen: false },
+    { key: "skills", label: "技能", nativeFullscreen: true },
+    { key: "paragon", label: "巅峰", nativeFullscreen: true },
+    { key: "mercenary", label: "雇佣兵", nativeFullscreen: false },
+  ];
 
   if (document.getElementById(STYLE_ID)) return;
 
@@ -68,6 +75,49 @@
       background: rgba(255, 211, 61, 0.12);
     }
 
+    .${EXIT_CLASS} {
+      position: fixed;
+      top: 10px;
+      right: 18px;
+      z-index: 2147483647;
+      height: 34px;
+      padding: 0 14px;
+      border: 0;
+      border-radius: 4px;
+      color: #ddd;
+      background: rgba(52, 52, 52, 0.96);
+      font: 15px/34px system-ui, sans-serif;
+      cursor: pointer;
+      box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
+    }
+
+    .${EXIT_CLASS}:hover {
+      color: #fff;
+      background: rgba(70, 70, 70, 0.98);
+    }
+
+    .build-variants__panel.${CUSTOM_FULLSCREEN_CLASS} {
+      position: fixed !important;
+      inset: 0 !important;
+      z-index: 2147483600 !important;
+      display: block !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      margin: 0 !important;
+      padding: 58px 24px 24px !important;
+      box-sizing: border-box !important;
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+      background: #151515 !important;
+    }
+
+    .build-variants__panel.${CUSTOM_FULLSCREEN_CLASS} > .build-module {
+      width: 100% !important;
+      max-width: 1600px !important;
+      margin: 0 auto 16px !important;
+      box-sizing: border-box !important;
+    }
+
     .paragon-planner.fullscreen.${ENHANCED_CLASS} {
       overflow-x: hidden !important;
       overflow-y: auto !important;
@@ -100,7 +150,15 @@
     if (paragon) return { root: paragon, module: "paragon" };
 
     const skills = [...document.querySelectorAll(".skill-tree-wrapper.fullscreen")].find(isVisible);
-    return skills ? { root: skills, module: "skills" } : null;
+    if (skills) return { root: skills, module: "skills" };
+
+    const custom = [...document.querySelectorAll(`.${CUSTOM_FULLSCREEN_CLASS}`)].find(isVisible);
+    if (!custom) return null;
+
+    return {
+      root: custom,
+      module: custom.id.replace("variant-panel-", ""),
+    };
   }
 
   function cacheOverview() {
@@ -120,6 +178,28 @@
   }
 
   function enterModuleFullscreen(module, attempt = 0) {
+    const config = MODULES.find((item) => item.key === module);
+    if (!config) return;
+
+    const active = getActiveFullscreen();
+    if (active?.module === module) return;
+
+    if (!config.nativeFullscreen) {
+      const panel = document.querySelector(`#variant-panel-${module}`);
+      if (panel && isVisible(panel)) {
+        panel.classList.add(CUSTOM_FULLSCREEN_CLASS);
+        queueSync();
+        return;
+      }
+
+      if (attempt < 20) {
+        window.setTimeout(() => enterModuleFullscreen(module, attempt + 1), 50);
+      } else {
+        console.error(`[D2Core 全屏增强] 找不到${config.label}面板。`);
+      }
+      return;
+    }
+
     const button = findVisibleFullscreenButton(module);
     if (button) {
       button.click();
@@ -129,15 +209,31 @@
     if (attempt < 20) {
       window.setTimeout(() => enterModuleFullscreen(module, attempt + 1), 50);
     } else {
-      console.error(`[D2Core 全屏增强] 找不到${module === "skills" ? "技能" : "巅峰"}全屏按钮。`);
+      console.error(`[D2Core 全屏增强] 找不到${config.label}全屏按钮。`);
     }
   }
 
+  function exitActiveFullscreen(active = getActiveFullscreen()) {
+    if (!active) return;
+
+    if (active.root.classList.contains(CUSTOM_FULLSCREEN_CLASS)) {
+      active.root.classList.remove(CUSTOM_FULLSCREEN_CLASS, ENHANCED_CLASS);
+      clearEnhancements();
+      return;
+    }
+
+    const exitButton = [...active.root.querySelectorAll(".control-button")]
+      .find((button) => button.textContent.trim() === "退出全屏");
+    if (exitButton) exitButton.click();
+  }
+
   function switchModule(module) {
+    const active = getActiveFullscreen();
     const tab = document.querySelector(`#variant-tab-${module}`);
-    if (!tab || tab.getAttribute("aria-selected") === "true") return;
+    if (!active || !tab || active.module === module) return;
 
     if (module === "paragon") cacheOverview();
+    exitActiveFullscreen(active);
     tab.click();
     window.setTimeout(() => enterModuleFullscreen(module), 0);
   }
@@ -148,22 +244,35 @@
     nav.setAttribute("role", "group");
     nav.setAttribute("aria-label", "全屏模块切换");
 
-    const labels = { skills: "技能", paragon: "巅峰" };
-    MODULES.forEach((module) => {
+    MODULES.forEach(({ key, label }) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = labels[module];
-      button.dataset.module = module;
-      button.setAttribute("aria-pressed", String(module === activeModule));
+      button.textContent = label;
+      button.dataset.module = key;
+      button.setAttribute("aria-pressed", String(key === activeModule));
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        switchModule(module);
+        switchModule(key);
       });
       nav.appendChild(button);
     });
 
     return nav;
+  }
+
+  function createExitButton() {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = EXIT_CLASS;
+    button.textContent = "退出全屏";
+    button.title = "退出全屏（Esc）";
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      exitActiveFullscreen();
+    });
+    return button;
   }
 
   function addOverview(root) {
@@ -176,10 +285,12 @@
   }
 
   function clearEnhancements(activeRoot = null) {
-    document.querySelectorAll(`.${ENHANCED_CLASS}`).forEach((element) => {
-      if (element !== activeRoot) element.classList.remove(ENHANCED_CLASS);
+    document.querySelectorAll(`.${ENHANCED_CLASS}, .${CUSTOM_FULLSCREEN_CLASS}`).forEach((element) => {
+      if (element !== activeRoot) {
+        element.classList.remove(ENHANCED_CLASS, CUSTOM_FULLSCREEN_CLASS);
+      }
     });
-    document.querySelectorAll(`.${NAV_CLASS}, .${OVERVIEW_CLONE_CLASS}`).forEach((element) => {
+    document.querySelectorAll(`.${NAV_CLASS}, .${EXIT_CLASS}, .${OVERVIEW_CLONE_CLASS}`).forEach((element) => {
       if (!activeRoot?.contains(element)) element.remove();
     });
   }
@@ -201,6 +312,11 @@
     if (!nav) {
       nav = createNavigation(active.module);
       active.root.appendChild(nav);
+    }
+
+    if (active.root.classList.contains(CUSTOM_FULLSCREEN_CLASS)
+      && !active.root.querySelector(`.${EXIT_CLASS}`)) {
+      active.root.appendChild(createExitButton());
     }
 
     nav.querySelectorAll("button[data-module]").forEach((button) => {
@@ -226,6 +342,16 @@
     attributes: true,
     attributeFilter: ["class", "style", "aria-selected"],
   });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const active = getActiveFullscreen();
+    if (!active) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    exitActiveFullscreen(active);
+  }, true);
 
   cacheOverview();
   queueSync();
