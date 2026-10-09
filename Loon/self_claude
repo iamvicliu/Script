@@ -3,8 +3,8 @@
 # 适用：Loon 远程规则集
 # 来源：X @wlzh《Claude 防封分流的完整域名配置》
 # 原帖：https://x.com/wlzh/status/2108017417670860900
-# 说明：Claude / Anthropic 相关域名全部走 DIRECT（干净直连），避免与他人共用机场节点 IP 被连坐封号
-# 注意：原帖使用独立策略组 CLAUDE0409（= direct）；本仓库按惯例写成 DIRECT，如需走专用干净节点请批量替换策略名
+# 说明：Claude / Anthropic 相关域名的流量统一走同一个出口，避免请求分散到不同 IP 触发风控
+# 注意：原帖使用独立策略组 CLAUDE0409（= direct）；本仓库按惯例写成 DIRECT，如需指定统一出口节点请批量替换策略名
 
 # 核心域名
 DOMAIN-SUFFIX,anthropic.com,DIRECT
