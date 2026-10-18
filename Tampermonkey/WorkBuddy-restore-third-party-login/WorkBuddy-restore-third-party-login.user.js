@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WorkBuddy 恢复第三方登录
 // @namespace    local.vicliu.workbuddy
-// @version      1.5.0
+// @version      1.0
 // @updated      2026-10-18
 // @description  在 WorkBuddy 登录页恢复页面原有的 Google、GitHub、X 登录入口。
 // @author       维克牛
