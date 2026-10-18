@@ -33,8 +33,6 @@
 
 ### 7881填单辅助
 
-> **注意：** 这个脚本会参与订单确认和支付流程，不属于单纯页面显示调整。使用前必须逐项检查页面选项、金额和最终提交内容；不要在不清楚影响时启用自动下单或支付。
-
 | 工具 | 用途 | 安装 | 说明 |
 | --- | --- | --- | --- |
 | 7881 购买填单助手 | 按页面默认选项勾选购买协议、安全服务和确认提醒；按脚本设置可继续自动下单或支付 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/auto-order-form-helper.user.js) | 会改变订单流程，使用前请检查设置 |
@@ -47,7 +45,6 @@
 
 | 文件 | 用途 | 地址 |
 | --- | --- | --- |
-| Debian / Ubuntu 初始化说明 | 安装常用工具、Python 和 Docker，设置时区并启用 BBR | [查看说明](Linux/README.md) |
 | VPS 初始化脚本 | 按上述说明执行系统初始化 | [查看脚本](Linux/VPS_Setup.sh) · [下载运行](https://raw.githubusercontent.com/iamvicliu/Script/main/Linux/VPS_Setup.sh) |
 
 ## 使用提醒
