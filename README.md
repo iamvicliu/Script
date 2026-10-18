@@ -17,8 +17,6 @@
 | Offcloud 远程下载切换 | 调整 Offcloud 页面中 Remote 功能的发送对象 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Offcloud-Remote-Switch.js) | 个人旧版辅助脚本 |
 | Pico 论坛标题整理 | 整理帖子、版块和个人主页的浏览器标题 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Pico.js) | 适用于 Pico 论坛 |
 
-![WorkBuddy 国际版登录页恢复后的 Google、GitHub 和 X 登录按钮](Tampermonkey/WorkBuddy-restore-third-party-login/workbuddy-third-party-login.png)
-
 ### 《流放之路 2》BD 整理
 
 | 工具 | 用途 | 安装 | 说明 |
@@ -33,7 +31,7 @@
 | --- | --- | --- | --- |
 | 暗黑核 D2Core BD 增强 | 为暗黑核 BD 页面增加全屏浏览、模块切换和变体切换 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/D4-D2Core-fullscreen-enhancer/D4-D2Core-fullscreen-enhancer.user.js) | [说明](Tampermonkey/D4-D2Core-fullscreen-enhancer/D4-D2Core-fullscreen-enhancer.greasyfork.md) |
 
-### 订单填单辅助
+### 7881填单辅助
 
 > **注意：** 这个脚本会参与订单确认和支付流程，不属于单纯页面显示调整。使用前必须逐项检查页面选项、金额和最终提交内容；不要在不清楚影响时启用自动下单或支付。
 
@@ -41,17 +39,9 @@
 | --- | --- | --- | --- |
 | 7881 购买填单助手 | 按页面默认选项勾选购买协议、安全服务和确认提醒；按脚本设置可继续自动下单或支付 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/auto-order-form-helper.user.js) | 会改变订单流程，使用前请检查设置 |
 
-## 网络规则清单
 
-这一类是供代理或分流工具读取的域名清单，不是浏览器脚本。
 
-| 文件 | 内容 | 地址 |
-| --- | --- | --- |
-| OpenAI 域名清单 | OpenAI 相关域名及其分组标签 | [查看](OpenAI.list) · [订阅原文](https://raw.githubusercontent.com/iamvicliu/Script/main/OpenAI.list) |
-
-个人使用的 Loon 分流规则不放在这个公开仓库中。
-
-## 服务器初始化
+## 服务器运维
 
 这一类用于新服务器的初始环境准备。脚本会修改系统软件、时区和网络参数，执行前应先阅读脚本，并确认目标系统与现有配置。
 
