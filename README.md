@@ -8,16 +8,15 @@
 
 这一类是 Tampermonkey 用户脚本，用于给已有网页补充更顺手的功能。安装脚本前，需要先安装并启用 Tampermonkey 一类的用户脚本管理器。
 
-### 登录与网页
+### 工具辅助
 
 | 工具 | 用途 | 安装 | 说明 |
 | --- | --- | --- | --- |
 | WorkBuddy 国际版登录增强 | 恢复 WorkBuddy 国际版登录页原本已有的 Google、GitHub 和 X 登录入口 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/WorkBuddy-restore-third-party-login/WorkBuddy-restore-third-party-login.user.js) | [说明](Tampermonkey/WorkBuddy-restore-third-party-login/WorkBuddy-restore-third-party-login.greasyfork.md) |
-
 | Offcloud 远程下载切换 | 调整 Offcloud 页面中 Remote 功能的发送对象 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Offcloud-Remote-Switch.js) | 个人旧版辅助脚本 |
 | Pico 论坛标题整理 | 整理帖子、版块和个人主页的浏览器标题 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Pico.js) | 适用于 Pico 论坛 |
 
-### 《流放之路 2》BD 整理
+### 《流放之路 2》
 
 | 工具 | 用途 | 安装 | 说明 |
 | --- | --- | --- | --- |
@@ -26,7 +25,7 @@
 | POE2 WeGameBD 增强 | 把 WeGame BD 分享页的技能信息整理成便于查看、筛选和复制的表格 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/POE2-WeGameBD-enhancer/POE2-WeGameBD-enhancer.user.js) | [说明](Tampermonkey/POE2-WeGameBD-enhancer/POE2-WeGameBD-enhancer.greasyfork.md) |
 | POE2 名称词典 | 保存脚本使用的公开名称对照数据 | [查看](Tampermonkey/POE2-data/poe2-name-dict-v1.json) | 辅助数据，不是独立安装的脚本 |
 
-### 《暗黑破坏神 4》BD 整理
+### 《暗黑破坏神 4》
 
 | 工具 | 用途 | 安装 | 说明 |
 | --- | --- | --- | --- |
