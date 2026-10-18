@@ -7,7 +7,7 @@ WorkBuddy 的登录页有时只显示企业账号和邮箱，原本存在的 Goo
 ## 安装
 
 - GitHub 直装地址：
-  `https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/WorkBuddy-restore-third-party-login/WorkBuddy-restore-third-party-login.user.js`
+  `https://raw.githubusercontent.com/iamvicliu/Script/6bc4aa7a4ccc1de9512c5df34d240591dcead4cf/Tampermonkey/WorkBuddy-restore-third-party-login/WorkBuddy-restore-third-party-login.user.js`
 
 安装前请先装好 Tampermonkey 一类的用户脚本管理器。
 
