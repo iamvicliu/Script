@@ -1,10 +1,10 @@
-# WorkBuddy 恢复第三方登录
+# WorkBuddy 国际版：恢复第三方登录
 
-WorkBuddy 的登录页有时只显示企业账号和邮箱，原本存在的 Google、GitHub 和 X 登录按钮会被藏起来。这个小工具会把页面里已经有的登录按钮重新显示出来。
+WorkBuddy 国际版（`workbuddy.ai`）的登录页有时只显示企业账号和邮箱，原本存在的 Google、GitHub 和 X 登录按钮会被藏起来。这个小工具会把页面里已经有的登录按钮重新显示出来。
 
 它不会创建账号，不会替你登录，也不会修改账号设置。
 
-![WorkBuddy 登录页恢复后的 Google、GitHub 和 X 登录按钮](workbuddy-third-party-login.png)
+![WorkBuddy 国际版登录页恢复后的 Google、GitHub 和 X 登录按钮](workbuddy-third-party-login.png)
 
 ## 安装
 

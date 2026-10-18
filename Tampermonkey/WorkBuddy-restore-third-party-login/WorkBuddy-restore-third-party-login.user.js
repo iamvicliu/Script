@@ -3,7 +3,7 @@
 // @namespace    local.vicliu.workbuddy
 // @version      1.0
 // @updated      2026-10-18
-// @description  在 WorkBuddy 登录页恢复页面原有的 Google、GitHub、X 登录入口。
+// @description  在 WorkBuddy 国际版登录页恢复页面原有的 Google、GitHub、X 登录入口。
 // @author       维克牛
 // @license      MIT
 // @homepageURL  https://github.com/iamvicliu/Script/tree/main/Tampermonkey/WorkBuddy-restore-third-party-login
