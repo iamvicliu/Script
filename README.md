@@ -13,7 +13,7 @@
 | 工具 | 用途 | 安装 | 说明 |
 | --- | --- | --- | --- |
 | WorkBuddy 国际版登录增强 | 恢复 WorkBuddy 国际版登录页原本已有的 Google、GitHub 和 X 登录入口 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/WorkBuddy-restore-third-party-login/WorkBuddy-restore-third-party-login.user.js) | [说明](Tampermonkey/WorkBuddy-restore-third-party-login/WorkBuddy-restore-third-party-login.greasyfork.md) |
-| PoEDB / POE2DB 多语言助手 | 提供多语言名称显示、三语搜索和复制功能 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/POE2DB-multilingual-helper.user.js) | 适用于 PoEDB 和 POE2DB |
+
 | Offcloud 远程下载切换 | 调整 Offcloud 页面中 Remote 功能的发送对象 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Offcloud-Remote-Switch.js) | 个人旧版辅助脚本 |
 | Pico 论坛标题整理 | 整理帖子、版块和个人主页的浏览器标题 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Pico.js) | 适用于 Pico 论坛 |
 
@@ -21,6 +21,7 @@
 
 | 工具 | 用途 | 安装 | 说明 |
 | --- | --- | --- | --- |
+| PoEDB / POE2DB 多语言助手 | 提供多语言名称显示、三语搜索和复制功能 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/POE2DB-multilingual-helper.user.js) | 适用于 PoEDB 和 POE2DB |
 | POE2 NinjaBD 增强 | 把 poe.ninja 公开角色页的装备、药剂、珠宝和技能整理成便于复制的表格，并支持名称语言切换 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/POE2-NinjaBD-enhancer/POE2-NinjaBD-enhancer.user.js) | [说明](Tampermonkey/POE2-NinjaBD-enhancer/POE2-NinjaBD-enhancer.greasyfork.md) |
 | POE2 WeGameBD 增强 | 把 WeGame BD 分享页的技能信息整理成便于查看、筛选和复制的表格 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/POE2-WeGameBD-enhancer/POE2-WeGameBD-enhancer.user.js) | [说明](Tampermonkey/POE2-WeGameBD-enhancer/POE2-WeGameBD-enhancer.greasyfork.md) |
 | POE2 名称词典 | 保存脚本使用的公开名称对照数据 | [查看](Tampermonkey/POE2-data/poe2-name-dict-v1.json) | 辅助数据，不是独立安装的脚本 |
