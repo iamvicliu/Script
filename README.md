@@ -8,7 +8,7 @@
 - 脚本不会替你保存密码、验证码或登录凭证。
 - 涉及订单、支付、系统配置或网络设置时，请先确认作用范围，并保留可回退的方法。
 
-表中的“最后更新”按对应文件在 Git 中的最后一次修改日期统计，截至 2026-10-18。
+表中的“最后更新”按对应文件在 Git 中的最后一次修改日期统计，截至 2026-11-23。
 
 # Tampermonkey油猴脚本
 
@@ -18,6 +18,7 @@
 
 | 工具 | 用途 | 最后更新 | 安装 |
 | --- | --- | --- | --- |
+| GitHub 增强套件 (GitHub Enhancer) | 强化仓库列表与详情页 Private / Public / Internal 可见性区分，支持 Releases 平台筛选、长更新日志折叠，以及屏蔽易误触单键快捷键（s / w） | 2026-11-23 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/GitHub-enhancer/GitHub-enhancer.user.js) |
 | WorkBuddy 国际版登录增强 | 恢复 WorkBuddy 国际版登录页原本已有的 Google、GitHub 和 X 登录入口 | 2026-10-18 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/WorkBuddy-restore-third-party-login/WorkBuddy-restore-third-party-login.user.js) |
 | Offcloud 远程下载切换 | 调整 Offcloud 页面中 Remote 功能的发送对象 | 2022-03-19 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Offcloud-Remote-Switch.js) |
 | Pico 论坛标题整理 | 整理帖子、版块和个人主页的浏览器标题 | 2022-09-27 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Pico.js) |
