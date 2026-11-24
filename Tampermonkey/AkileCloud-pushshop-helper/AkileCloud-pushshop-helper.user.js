@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         AkileCloud Push 市场助手
 // @namespace    https://github.com/iamvicliu/Script
-// @version      1.0.0
+// @version      1.1.0
 // @description  在 AkileCloud Push 交易市场将服务器列表转为可排序的溢价计算表格，并将刷新按钮移至搜索框旁，两项功能均可单独开关。
 // @author       维克牛
 // @license      MIT
+// @match        https://akile.ai/*
 // @match        https://akile.io/*
 // @homepageURL  https://github.com/iamvicliu/Script/tree/main/Tampermonkey/AkileCloud-pushshop-helper
 // @supportURL   https://github.com/iamvicliu/Script/issues
@@ -14,6 +15,7 @@
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
+// @grant        window.onurlchange
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -31,18 +33,22 @@
     };
 
     const TABLE_BTN_ID = 'akile-pushshop-table-btn';
+    const TABLE_BTN_WRAP_ATTR = 'data-akile-table-btn-wrap';
     const TOAST_ID = 'akile-pushshop-toast';
     const FALLBACK_MODAL_ID = 'akile-pushshop-fallback-modal';
     const MOVED_REFRESH_ATTR = 'data-akile-moved-refresh';
+    const MOVED_REFRESH_WRAP_ATTR = 'data-akile-moved-refresh-wrap';
     const HIDDEN_ORIGIN_ATTR = 'data-akile-origin-refresh-hidden';
 
     let config = loadConfig();
     let menuIds = [];
     let domObserver = null;
     let syncTimer = null;
+    let urlWatchTimer = null;
+    let lastSeenHref = typeof window !== 'undefined' && window.location ? String(window.location.href || '') : '';
     let toastTimer = null;
     let routePatched = false;
-    let movedRefreshRef = null; // { originBtn, hostNode, clonedBtn, clickHandler }
+    let movedRefreshRef = null; // { originBtn, hostNode, clonedBtn, wrapperEl, targetContainer, clickHandler }
 
     function loadConfig() {
         try {
@@ -150,7 +156,8 @@
     }
 
     function isPushShopPage() {
-        return /^\/console\/pushshop(?:\/|$)/.test(window.location.pathname || '');
+        const pathname = (window.location && window.location.pathname) || '';
+        return /^\/console\/pushshop(?:\/)?$/.test(pathname);
     }
 
     function getText(el) {
@@ -207,7 +214,6 @@
         const trimmed = str.trim();
         if (!trimmed) return null;
 
-        // 优先识别常见 YYYY-MM-DD / YYYY/MM/DD（可附带 HH:mm[:ss]），按本地时间构造避免时区偏差
         const localMatch = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
         if (localMatch) {
             const year = parseInt(localMatch[1], 10);
@@ -261,6 +267,7 @@
         if (unit.startsWith('G')) return val;
         if (unit.startsWith('M')) return val / 1024;
         if (unit.startsWith('K')) return val / (1024 * 1024);
+        if (unit === 'B') return val / (1024 * 1024 * 1024);
         return val;
     }
 
@@ -270,7 +277,7 @@
             return {
                 renewalText: '',
                 renewalAmount: null,
-                currencySymbol: '￥',
+                currencySymbol: '¥',
                 cycleType: 'month',
                 cycleDays: 30,
                 cycleOrder: 1
@@ -278,20 +285,24 @@
         }
         const renewalAmount = parseFloatSafe(text);
         const currencyMatch = text.match(/[￥¥$€£]/);
-        const currencySymbol = currencyMatch ? currencyMatch[0] : '￥';
+        const currencySymbol = currencyMatch ? currencyMatch[0] : '¥';
 
         let cycleType = 'month';
         let cycleDays = 30;
         let cycleOrder = 1;
-        if (/\/半年|半年付/.test(text)) {
+        if (/\/\s*3\s*年|3\s*年付|3\s*Years?/i.test(text)) {
+            cycleType = '3year';
+            cycleDays = 1095;
+            cycleOrder = 5;
+        } else if (/\/\s*半年|半年付|6\s*Months?/i.test(text)) {
             cycleType = 'halfyear';
             cycleDays = 182.5;
             cycleOrder = 3;
-        } else if (/\/年|年付/.test(text)) {
+        } else if (/\/\s*年|年付|\/\s*Year\b|\bYear\b/i.test(text)) {
             cycleType = 'year';
             cycleDays = 365;
             cycleOrder = 4;
-        } else if (/\/季|季付/.test(text)) {
+        } else if (/\/\s*季|季付|Quarter|3\s*Months?/i.test(text)) {
             cycleType = 'quarter';
             cycleDays = 90;
             cycleOrder = 2;
@@ -307,28 +318,62 @@
         };
     }
 
-    function computeBudgetUsable(server, budget, nowMs) {
-        const b = Number(budget);
-        const curNow = Number.isFinite(nowMs) ? nowMs : Date.now();
-        if (!Number.isFinite(b) || b <= 0 || server.price === null || server.dailyPrice === null || server.dailyPrice <= 0) {
-            return { label: '-', sortValue: null, insufficient: false };
+    function parseIpCheckAndDescription(card) {
+        const ipCheckEl = card.querySelector('.server-ip-check');
+        if (ipCheckEl) {
+            let statusLabel = '';
+            if (ipCheckEl.classList && ipCheckEl.classList.contains('blocked')) {
+                statusLabel = '被墙';
+            } else if (ipCheckEl.classList && ipCheckEl.classList.contains('normal')) {
+                statusLabel = '正常';
+            } else if (ipCheckEl.classList && ipCheckEl.classList.contains('no-data')) {
+                statusLabel = '暂无数据';
+            }
+
+            const pills = Array.from(ipCheckEl.querySelectorAll('.ip-check-results .ip-check-pill'))
+                .map(getText)
+                .filter(Boolean);
+            const emptyText = getText(ipCheckEl.querySelector('.ip-check-empty'));
+
+            let ipStatus = '';
+            if (pills.length > 0) {
+                ipStatus = (statusLabel ? statusLabel + ' · ' : '') + pills.join(' / ');
+            } else if (statusLabel) {
+                ipStatus = statusLabel;
+            } else if (emptyText) {
+                ipStatus = emptyText;
+            }
+
+            const labelText = getText(ipCheckEl.querySelector('.ip-check-label'));
+            const timeText = getText(ipCheckEl.querySelector('.ip-check-time'));
+            const titleAttr = typeof ipCheckEl.getAttribute === 'function' ? (ipCheckEl.getAttribute('title') || '').trim() : '';
+
+            let description = '';
+            if (labelText && timeText) {
+                description = labelText + ' (' + timeText + ')';
+            } else if (labelText) {
+                description = labelText;
+            } else if (timeText) {
+                description = timeText;
+            } else if (titleAttr && titleAttr !== emptyText) {
+                description = titleAttr;
+            }
+
+            return { ipStatus, description };
         }
-        if (b < server.price) {
-            const diff = server.price - b;
-            return {
-                label: '预算不足（差 ￥' + diff.toFixed(2) + '）',
-                sortValue: -diff,
-                insufficient: true
-            };
+
+        // 向后兼容旧版 .server-detail DOM
+        const detailEl = card.querySelector('.server-detail');
+        const detailText = getText(detailEl);
+        if (detailText) {
+            const ipStatusMatch = detailText.match(/\[(.*?)\]/);
+            const ipStatus = ipStatusMatch ? ipStatusMatch[1].trim() : '';
+            const descSplit = detailText.split(/官方描述[:：]\s*/);
+            const description = descSplit.length > 1 ? descSplit.slice(1).join('官方描述: ').trim() : '';
+            return { ipStatus, description };
         }
-        const baseMs = (server.endMs !== null && server.endMs > curNow) ? server.endMs : curNow;
-        const extraDays = Math.min(36500, Math.floor((b - server.price) / server.dailyPrice));
-        const targetMs = baseMs + extraDays * 86400000;
-        return {
-            label: formatLocalDate(targetMs),
-            sortValue: targetMs,
-            insufficient: false
-        };
+
+        return { ipStatus: '', description: '' };
     }
 
     function extractServers(serverList, nowMs) {
@@ -338,10 +383,14 @@
         const servers = [];
 
         cards.forEach((card) => {
+            const { ipStatus, description } = parseIpCheckAndDescription(card);
             const server = {
                 name: getText(card.querySelector('.server-name')),
-                ipStatus: '',
-                description: '',
+                area: '',
+                node: '',
+                planName: '',
+                ipStatus: ipStatus,
+                description: description,
                 configText: '',
                 bandwidth: '',
                 bandwidthMbps: null,
@@ -349,6 +398,7 @@
                 usedTrafficGB: null,
                 totalTraffic: '',
                 totalTrafficGB: null,
+                isUnlimitedTraffic: false,
                 ipv4: '',
                 ipv4Count: null,
                 ipv6: '',
@@ -370,53 +420,60 @@
                 premium: null
             };
 
-            const detailEl = card.querySelector('.server-detail');
-            const detailText = getText(detailEl);
-            if (detailText) {
-                const ipStatusMatch = detailText.match(/\[(.*?)\]/);
-                server.ipStatus = ipStatusMatch ? ipStatusMatch[1].trim() : '';
-                const descSplit = detailText.split(/官方描述[:：]\s*/);
-                server.description = descSplit.length > 1 ? descSplit.slice(1).join('官方描述: ').trim() : '';
-            }
-
             card.querySelectorAll('.server-info').forEach((info) => {
                 const fieldName = getText(info.querySelector('.info-name'));
                 const fieldValue = getText(info.querySelector('.info-value'));
                 if (!fieldName) return;
 
-                if (fieldName === '网络') {
-                    const match = fieldValue.match(/带宽\s*([\d.]+\s*[A-Za-z]+)\s+流量\s*([\d.]+\s*[A-Za-z]+)\s*\/\s*([\d.]+\s*[A-Za-z]+)/i);
-                    if (match) {
-                        server.bandwidth = match[1].replace(/\s+/g, '');
-                        server.usedTraffic = match[2].replace(/\s+/g, '');
-                        server.totalTraffic = match[3].replace(/\s+/g, '');
+                if (fieldName === '网络' || fieldName === 'Network') {
+                    const limitedMatch = fieldValue.match(/^(?:带宽|Bandwidth)\s*([\d.]+\s*[A-Za-z]+)\s+(?:流量|Traffic)\s*([\d.]+\s*[A-Za-z]+)\s*\/\s*([\d.]+\s*[A-Za-z]+)/i);
+                    const unlimitedMatch = !limitedMatch && fieldValue.match(/^(?:带宽|Bandwidth)\s*([\d.]+\s*[A-Za-z]+)\s+(?:流量|Traffic)\s*(无限制|Unlimited)/i);
+                    if (limitedMatch) {
+                        server.bandwidth = limitedMatch[1].replace(/\s+/g, '');
+                        server.usedTraffic = limitedMatch[2].replace(/\s+/g, '');
+                        server.totalTraffic = limitedMatch[3].replace(/\s+/g, '');
                         server.bandwidthMbps = parseBandwidthMbps(server.bandwidth);
                         server.usedTrafficGB = parseTrafficGB(server.usedTraffic);
                         server.totalTrafficGB = parseTrafficGB(server.totalTraffic);
+                    } else if (unlimitedMatch) {
+                        server.bandwidth = unlimitedMatch[1].replace(/\s+/g, '');
+                        server.bandwidthMbps = parseBandwidthMbps(server.bandwidth);
+                        server.usedTraffic = '';
+                        server.usedTrafficGB = null;
+                        server.totalTraffic = unlimitedMatch[2];
+                        server.totalTrafficGB = null;
+                        server.isUnlimitedTraffic = true;
                     } else {
                         server.bandwidth = fieldValue;
+                        server.bandwidthMbps = parseBandwidthMbps(fieldValue);
                     }
                 } else if (fieldName === 'IP') {
-                    const match = fieldValue.match(/v4\s*(\d+)\s*个?.*?v6\s*(\d+)\s*个?/i);
+                    const match = fieldValue.match(/v4\s*(\d+)\s*(?:个|Units?)?.*?v6\s*(\d+)\s*(?:个|Units?)?/i);
                     if (match) {
                         server.ipv4Count = parseInt(match[1], 10);
                         server.ipv6Count = parseInt(match[2], 10);
                         server.ipv4 = server.ipv4Count + '个';
                         server.ipv6 = server.ipv6Count + '个';
                     }
-                } else if (fieldName === '续费价格') {
+                } else if (fieldName === '续费价格' || fieldName === 'Renewal Price') {
                     const renewalInfo = parseRenewalInfo(fieldValue);
                     server.renewalPrice = renewalInfo.renewalText;
                     server.renewalAmount = renewalInfo.renewalAmount;
                     server.cycleType = renewalInfo.cycleType;
                     server.cycleDays = renewalInfo.cycleDays;
                     server.cycleOrder = renewalInfo.cycleOrder;
-                    server.isYearly = renewalInfo.cycleType === 'year';
-                } else if (fieldName === '配置') {
+                    server.isYearly = renewalInfo.cycleType === 'year' || renewalInfo.cycleType === '3year';
+                } else if (fieldName === '地区' || fieldName === 'Region') {
+                    server.area = fieldValue;
+                } else if (fieldName === '节点' || fieldName === 'Node') {
+                    server.node = fieldValue;
+                } else if (fieldName === '套餐' || fieldName === 'Plan') {
+                    server.planName = fieldValue;
+                } else if (fieldName === '配置' || fieldName === 'Config') {
                     server.configText = fieldValue;
-                } else if (fieldName === '重置流量') {
+                } else if (fieldName === '重置流量' || fieldName === 'Reset Traffic') {
                     server.resetTraffic = fieldValue;
-                } else if (fieldName === '到期时间') {
+                } else if (fieldName === '到期时间' || fieldName === 'Due Time') {
                     server.expireTime = fieldValue;
                     server.endMs = parseDateSafe(fieldValue);
                 }
@@ -481,7 +538,7 @@
             '  .budget-input{width:96px;padding:5px 8px;border:1px solid var(--btn-border);border-radius:6px;background:var(--bg);color:var(--fg);font-size:13px}',
             '  .summary{margin-left:auto;font-size:13px;color:var(--muted)}',
             '  .table-wrap{overflow:auto;max-height:calc(100vh - 140px);border:1px solid var(--border);border-radius:10px}',
-            '  table{border-collapse:collapse;width:100%;min-width:1080px}',
+            '  table{border-collapse:collapse;width:100%;min-width:1140px}',
             '  th,td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);padding:8px 10px;text-align:left;vertical-align:middle}',
             '  th:last-child,td:last-child{border-right:none}',
             '  th{position:sticky;top:0;z-index:2;background:var(--head);cursor:pointer;user-select:none;white-space:nowrap;font-weight:600}',
@@ -562,12 +619,13 @@
             '  var COLUMNS = [',
             '    { key: "idx", title: "序号", type: "num", val: function(r){ return r.idx; }, text: function(r){ return String(r.idx); } },',
             '    { key: "name", title: "套餐名称", type: "str", val: function(r){ return r.server.name || null; }, text: function(r){ return r.server.name || "-"; } },',
+            '    { key: "area", title: "地区", type: "str", val: function(r){ return r.server.area || null; }, text: function(r){ return r.server.area || "-"; } },',
             '    { key: "ipStatus", title: "IP状态", type: "str", val: function(r){ return r.server.ipStatus || null; }, text: function(r){ return r.server.ipStatus || "-"; } },',
             '    { key: "description", title: "官方描述", type: "str", isDesc: true, val: function(r){ return r.server.description || null; }, text: function(r){ return r.server.description || "-"; } },',
             '    { key: "configText", title: "配置", type: "str", val: function(r){ return r.server.configText || null; }, text: function(r){ return r.server.configText || "-"; } },',
             '    { key: "bandwidth", title: "带宽", type: "num", val: function(r){ return r.server.bandwidthMbps; }, text: function(r){ return r.server.bandwidth || "-"; } },',
             '    { key: "usedTraffic", title: "已用流量", type: "num", val: function(r){ return r.server.usedTrafficGB; }, text: function(r){ return r.server.usedTraffic || "-"; } },',
-            '    { key: "totalTraffic", title: "总流量", type: "num", val: function(r){ return r.server.totalTrafficGB; }, text: function(r){ return r.server.totalTraffic || "-"; } },',
+            '    { key: "totalTraffic", title: "总流量", type: "num", val: function(r){ return r.server.isUnlimitedTraffic ? Infinity : r.server.totalTrafficGB; }, text: function(r){ return r.server.totalTraffic || "-"; } },',
             '    { key: "ipv4", title: "IPv4", type: "num", val: function(r){ return r.server.ipv4Count; }, text: function(r){ return r.server.ipv4 || "-"; } },',
             '    { key: "ipv6", title: "IPv6", type: "num", val: function(r){ return r.server.ipv6Count; }, text: function(r){ return r.server.ipv6 || "-"; } },',
             '    { key: "renewal", title: "续费价格", type: "renewal", val: function(r){ return r.server.renewalAmount === null ? null : { o: r.server.cycleOrder, a: r.server.renewalAmount }; }, text: function(r){ return r.server.renewalPrice || "-"; }, cls: function(r){ return r.server.isYearly ? "price-year" : (r.server.renewalPrice ? "price-month" : ""); } },',
@@ -588,6 +646,7 @@
             '      return asc ? (aVal.a - bVal.a) : (bVal.a - aVal.a);',
             '    }',
             '    if (type === "num") {',
+            '      if (aVal === bVal) return 0;',
             '      return asc ? (aVal - bVal) : (bVal - aVal);',
             '    }',
             '    var cmp = String(aVal).localeCompare(String(bVal), "zh-CN");',
@@ -828,20 +887,60 @@
     }
 
     function createTableButton() {
-        if (document.getElementById(TABLE_BTN_ID)) return;
-        const parent = document.body || document.documentElement;
-        if (!parent) return;
+        const existingBtn = document.getElementById(TABLE_BTN_ID);
+        const actionSpace = document.querySelector('.akile-action-bar .actions .arco-space');
+
+        if (existingBtn && existingBtn.isConnected) {
+            // 若页面从无操作栏变为出现操作栏，则迁移进操作栏
+            if (actionSpace && !actionSpace.querySelector('#' + TABLE_BTN_ID)) {
+                removeTableButton();
+            } else {
+                return;
+            }
+        } else if (existingBtn) {
+            removeTableButton();
+        }
 
         const btn = document.createElement('button');
         btn.id = TABLE_BTN_ID;
         btn.type = 'button';
         btn.textContent = '生成表格视图';
+        btn.addEventListener('click', openTableView);
+
+        if (actionSpace) {
+            btn.style.cssText = [
+                'height:32px',
+                'padding:0 14px',
+                'background-color:#165DFF',
+                'color:#ffffff',
+                'border:none',
+                'border-radius:4px',
+                'cursor:pointer',
+                'font-size:13px',
+                'font-weight:500',
+                'line-height:32px',
+                'white-space:nowrap',
+                'transition:background-color 0.2s ease'
+            ].join(';');
+            btn.addEventListener('mouseover', () => { btn.style.backgroundColor = '#0E42CC'; });
+            btn.addEventListener('mouseout', () => { btn.style.backgroundColor = '#165DFF'; });
+
+            const wrap = document.createElement('div');
+            wrap.className = 'arco-space-item';
+            wrap.setAttribute(TABLE_BTN_WRAP_ATTR, '1');
+            wrap.appendChild(btn);
+            actionSpace.appendChild(wrap);
+            return;
+        }
+
+        const parent = document.body || document.documentElement;
+        if (!parent) return;
         btn.style.cssText = [
             'position:fixed',
-            'top:68px',
-            'right:clamp(16px,3vw,48px)',
+            'bottom:24px',
+            'right:24px',
             'z-index:9999',
-            'padding:8px 16px',
+            'padding:9px 16px',
             'background-color:#165DFF',
             'color:#ffffff',
             'border:none',
@@ -850,21 +949,16 @@
             'font-size:14px',
             'font-weight:500',
             'transition:all 0.2s ease',
-            'box-shadow:0 2px 8px rgba(22,93,255,0.28)'
+            'box-shadow:0 4px 14px rgba(22,93,255,0.32)'
         ].join(';');
-
         btn.addEventListener('mouseover', () => {
             btn.style.backgroundColor = '#0E42CC';
             btn.style.transform = 'translateY(-1px)';
-            btn.style.boxShadow = '0 4px 12px rgba(22,93,255,0.36)';
         });
         btn.addEventListener('mouseout', () => {
             btn.style.backgroundColor = '#165DFF';
             btn.style.transform = 'translateY(0)';
-            btn.style.boxShadow = '0 2px 8px rgba(22,93,255,0.28)';
         });
-        btn.addEventListener('click', openTableView);
-
         parent.appendChild(btn);
     }
 
@@ -873,6 +967,9 @@
         if (btn && btn.parentNode) {
             btn.parentNode.removeChild(btn);
         }
+        document.querySelectorAll('[' + TABLE_BTN_WRAP_ATTR + '="1"]').forEach((el) => {
+            if (el.parentNode) el.parentNode.removeChild(el);
+        });
     }
 
     function findOriginRefreshButton() {
@@ -904,14 +1001,14 @@
 
     function restoreRefreshButton() {
         if (movedRefreshRef) {
-            const { clonedBtn, hostNode, clickHandler } = movedRefreshRef;
-            if (clonedBtn) {
-                if (clickHandler) {
-                    clonedBtn.removeEventListener('click', clickHandler);
-                }
-                if (clonedBtn.parentNode) {
-                    clonedBtn.parentNode.removeChild(clonedBtn);
-                }
+            const { clonedBtn, wrapperEl, hostNode, clickHandler } = movedRefreshRef;
+            if (clonedBtn && clickHandler) {
+                clonedBtn.removeEventListener('click', clickHandler);
+            }
+            if (wrapperEl && wrapperEl.parentNode) {
+                wrapperEl.parentNode.removeChild(wrapperEl);
+            } else if (clonedBtn && clonedBtn.parentNode) {
+                clonedBtn.parentNode.removeChild(clonedBtn);
             }
             if (hostNode) {
                 if (hostNode.dataset && 'akileOrigDisplay' in hostNode.dataset) {
@@ -925,6 +1022,9 @@
             movedRefreshRef = null;
         }
 
+        document.querySelectorAll('[' + MOVED_REFRESH_WRAP_ATTR + '="1"]').forEach((el) => {
+            if (el.parentNode) el.parentNode.removeChild(el);
+        });
         document.querySelectorAll('[' + MOVED_REFRESH_ATTR + '="1"]').forEach((el) => {
             if (el.parentNode) el.parentNode.removeChild(el);
         });
@@ -940,7 +1040,8 @@
     }
 
     function ensureMovedRefreshButton() {
-        const targetContainer = document.querySelector('.arco-input-append');
+        const actionSpace = document.querySelector('.akile-action-bar .actions .arco-space');
+        const targetContainer = actionSpace || document.querySelector('.arco-input-append');
         const originBtn = findOriginRefreshButton();
         if (!targetContainer || !originBtn) {
             if (movedRefreshRef) restoreRefreshButton();
@@ -950,10 +1051,10 @@
         if (
             movedRefreshRef &&
             movedRefreshRef.originBtn === originBtn &&
+            movedRefreshRef.targetContainer === targetContainer &&
             movedRefreshRef.clonedBtn &&
             movedRefreshRef.clonedBtn.isConnected &&
-            movedRefreshRef.originBtn.isConnected &&
-            movedRefreshRef.clonedBtn.parentElement === targetContainer
+            movedRefreshRef.originBtn.isConnected
         ) {
             return;
         }
@@ -988,12 +1089,29 @@
             }
         };
         clonedBtn.addEventListener('click', clickHandler);
-        targetContainer.appendChild(clonedBtn);
+
+        let wrapperEl = null;
+        if (actionSpace) {
+            wrapperEl = document.createElement('div');
+            wrapperEl.className = 'arco-space-item';
+            wrapperEl.setAttribute(MOVED_REFRESH_WRAP_ATTR, '1');
+            wrapperEl.appendChild(clonedBtn);
+            const tableWrap = actionSpace.querySelector('[' + TABLE_BTN_WRAP_ATTR + '="1"]');
+            if (tableWrap && typeof actionSpace.insertBefore === 'function') {
+                actionSpace.insertBefore(wrapperEl, tableWrap);
+            } else {
+                actionSpace.appendChild(wrapperEl);
+            }
+        } else {
+            targetContainer.appendChild(clonedBtn);
+        }
 
         movedRefreshRef = {
             originBtn: originBtn,
             hostNode: hostNode,
             clonedBtn: clonedBtn,
+            wrapperEl: wrapperEl,
+            targetContainer: targetContainer,
             clickHandler: clickHandler
         };
     }
@@ -1038,22 +1156,31 @@
             disconnectObserver();
         }
 
+        if (config.enableMoveRefresh) {
+            ensureMovedRefreshButton();
+        } else {
+            restoreRefreshButton();
+        }
+
         const serverList = document.querySelector('.server-list');
         if (config.enableTableView && serverList) {
             createTableButton();
         } else {
             removeTableButton();
         }
-
-        if (config.enableMoveRefresh) {
-            ensureMovedRefreshButton();
-        } else {
-            restoreRefreshButton();
-        }
     }
 
     function onRouteChange() {
+        lastSeenHref = (window.location && window.location.href) || '';
         syncPageState();
+    }
+
+    function stopRouteWatcher() {
+        disconnectObserver();
+        if (urlWatchTimer) {
+            clearInterval(urlWatchTimer);
+            urlWatchTimer = null;
+        }
     }
 
     function setupRouteListener() {
@@ -1079,9 +1206,22 @@
             }
         }
 
+        if (window.onurlchange === null && typeof window.addEventListener === 'function') {
+            window.addEventListener('urlchange', onRouteChange);
+        }
+
         window.addEventListener('popstate', onRouteChange);
         window.addEventListener('hashchange', onRouteChange);
-        window.addEventListener('unload', disconnectObserver);
+        window.addEventListener('unload', stopRouteWatcher);
+
+        // 兜底应对 Tampermonkey 沙箱隔离导致主世界 history.pushState 不触发沙箱钩子的 SPA 路由跳转
+        urlWatchTimer = setInterval(() => {
+            const curHref = (window.location && window.location.href) || '';
+            if (curHref !== lastSeenHref) {
+                lastSeenHref = curHref;
+                syncPageState();
+            }
+        }, 400);
     }
 
     registerMenuCommands();
