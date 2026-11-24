@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         GitHub 增强套件 (GitHub Enhancer)
 // @namespace    https://github.com/iamvicliu/Script/tree/main/Tampermonkey/GitHub-enhancer
-// @version      0.3.0
-// @updated      2026-11-23
-// @description  增强 GitHub 视觉辨识与日常使用体验：功能1 强化 Private / Public / Internal 列表与详情页区分；功能2 Releases 平台筛选与长更新日志折叠（兼容高速下载脚本）；功能3 禁用 GitHub 易误触单键快捷键（s / w）
+// @version      0.4.0
+// @updated      2026-11-24
+// @description  增强 GitHub 视觉辨识与日常使用体验：功能1 强化 Private / Public / Internal 列表与详情页区分；功能2 Releases 平台筛选与长更新日志折叠（兼容高速下载脚本）；功能3 禁用 GitHub 易误触单键快捷键（s / w）；功能4 Markdown 图片点击原地看大图（灯箱缩放、拖拽与多图切换，不误伤外链与徽章）
 // @author       维克牛
 // @license      MIT
 // @homepageURL  https://github.com/iamvicliu/Script/tree/main/Tampermonkey/GitHub-enhancer
@@ -54,6 +54,10 @@
     shortcutGuard: {
       enabled: true,
       blockedKeys: ['s', 'w'],
+    },
+    // 功能4：Markdown 图片点击原地看大图（Lightbox 灯箱）
+    imageLightbox: {
+      enabled: true,
     },
   };
 
@@ -1713,12 +1717,872 @@
   };
 
   // ============================================================================
-  // 6. 功能注册表与 SPA / 动态 DOM 调度器
+  // 6. 功能4：Markdown 图片点击原地看大图（Lightbox 灯箱）
+  // ============================================================================
+  const LIGHTBOX_IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|avif|bmp|svg|ico)$/i;
+  const LIGHTBOX_REPO_IMAGE_RE = /^\/[^/]+\/[^/]+\/(?:blob|raw)\/.+\.(?:png|jpe?g|gif|webp|avif|bmp|svg|ico)$/i;
+  const LIGHTBOX_GITHUB_MEDIA_HOST_RE = /^(?:raw|user-images|private-user-images|camo|objects|gist)\.githubusercontent\.com$/i;
+  const LIGHTBOX_BADGE_HOST_RE = /(^|\.)(img\.shields\.io|shields\.io|badgen\.net|badge\.fury\.io|codecov\.io|coveralls\.io|komarev\.com|visitor-badge\.[\w.-]+|forthebadge\.com|img\.badgesize\.io|travis-ci\.(?:org|com)|circleci\.com|david-dm\.org)$/i;
+  const LIGHTBOX_BADGE_URL_RE = /\/api\/badge\/|\/actions\/workflows\/[^/]+\/badge\.svg|\/badge\.svg(?:\?|$)/i;
+
+  const imageLightboxFeature = {
+    id: 'imageLightbox',
+    name: 'Markdown 图片点击看大图',
+    state: {
+      isOpen: false,
+      items: [],
+      index: 0,
+      scale: 1,
+      tx: 0,
+      ty: 0,
+      dragging: false,
+      dragMoved: false,
+      startX: 0,
+      startY: 0,
+      originTx: 0,
+      originTy: 0,
+    },
+    els: null,
+    keyHandler: null,
+
+    styles() {
+      return `
+        html[data-ghe-lightbox-enabled="true"] .markdown-body img[data-ghe-lightbox="true"] {
+          cursor: zoom-in !important;
+          transition: filter 0.15s ease;
+        }
+        html[data-ghe-lightbox-enabled="true"] .markdown-body img[data-ghe-lightbox="true"]:hover {
+          filter: brightness(1.03);
+        }
+        html[data-ghe-lightbox-open="true"] {
+          overflow: hidden !important;
+        }
+
+        .ghe-lightbox-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 2147483640;
+          display: flex;
+          flex-direction: column;
+          background: rgba(13, 17, 23, 0.88);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          color: #f0f6fc;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+          user-select: none;
+        }
+        .ghe-lightbox-overlay[hidden] {
+          display: none !important;
+        }
+
+        .ghe-lightbox-topbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 12px 16px;
+          background: linear-gradient(180deg, rgba(13, 17, 23, 0.78) 0%, rgba(13, 17, 23, 0.25) 100%);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          flex-shrink: 0;
+        }
+        .ghe-lightbox-meta {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+          flex: 1;
+        }
+        .ghe-lightbox-counter {
+          padding: 2px 8px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.12);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          font-size: 12px;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+        .ghe-lightbox-title {
+          font-size: 13px;
+          color: #e6edf3;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .ghe-lightbox-actions {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-shrink: 0;
+          flex-wrap: wrap;
+        }
+        .ghe-lightbox-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 28px;
+          height: 28px;
+          padding: 0 10px;
+          border-radius: 6px;
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          background: rgba(255, 255, 255, 0.10);
+          color: #f0f6fc !important;
+          font-size: 12px;
+          font-weight: 500;
+          line-height: 1;
+          text-decoration: none !important;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
+        .ghe-lightbox-btn:hover {
+          background: rgba(255, 255, 255, 0.20);
+          border-color: rgba(255, 255, 255, 0.28);
+        }
+        .ghe-lightbox-btn[hidden] {
+          display: none !important;
+        }
+        .ghe-lightbox-zoom-label {
+          min-width: 46px;
+          text-align: center;
+          font-size: 12px;
+          font-variant-numeric: tabular-nums;
+          color: #c9d1d9;
+        }
+        .ghe-lightbox-sep {
+          width: 1px;
+          height: 16px;
+          background: rgba(255, 255, 255, 0.18);
+          margin: 0 2px;
+        }
+        .ghe-lightbox-close {
+          background: rgba(248, 81, 73, 0.22);
+          border-color: rgba(248, 81, 73, 0.42);
+        }
+        .ghe-lightbox-close:hover {
+          background: rgba(248, 81, 73, 0.38);
+        }
+
+        .ghe-lightbox-stage {
+          position: relative;
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px 64px;
+          overflow: hidden;
+        }
+        .ghe-lightbox-img {
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+          border-radius: 6px;
+          box-shadow: 0 20px 56px rgba(0, 0, 0, 0.55);
+          transform-origin: center center;
+          transition: transform 0.12s ease-out;
+          cursor: zoom-in;
+          -webkit-user-drag: none;
+        }
+        .ghe-lightbox-img[data-zoomed="true"] {
+          cursor: grab;
+        }
+        .ghe-lightbox-img[data-dragging="true"] {
+          transition: none;
+          cursor: grabbing;
+        }
+
+        .ghe-lightbox-nav {
+          position: absolute;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 40px;
+          height: 40px;
+          border-radius: 999px;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          background: rgba(13, 17, 23, 0.65);
+          color: #f0f6fc;
+          font-size: 20px;
+          line-height: 1;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          z-index: 2;
+          transition: background-color 0.15s ease, transform 0.15s ease;
+        }
+        .ghe-lightbox-nav:hover {
+          background: rgba(255, 255, 255, 0.22);
+          transform: translateY(-50%) scale(1.06);
+        }
+        .ghe-lightbox-nav[hidden] {
+          display: none !important;
+        }
+        .ghe-lightbox-prev {
+          left: 16px;
+        }
+        .ghe-lightbox-next {
+          right: 16px;
+        }
+
+        .ghe-lightbox-hint {
+          padding: 8px 16px 12px;
+          text-align: center;
+          font-size: 11px;
+          color: rgba(230, 237, 243, 0.65);
+          flex-shrink: 0;
+        }
+      `;
+    },
+
+    getBaseHref() {
+      return (typeof location !== 'undefined' && location.href) || 'https://github.com/';
+    },
+
+    getCurrentHost() {
+      return (typeof location !== 'undefined' && location.hostname) || 'github.com';
+    },
+
+    safeUrl(rawUrl) {
+      if (!rawUrl || typeof rawUrl !== 'string') return null;
+      const trimmed = rawUrl.trim();
+      if (!trimmed || trimmed.startsWith('#') || /^javascript:/i.test(trimmed)) return null;
+      try {
+        const parsed = new URL(trimmed, this.getBaseHref());
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' && parsed.protocol !== 'data:') {
+          return null;
+        }
+        return parsed;
+      } catch {
+        return null;
+      }
+    },
+
+    decodeCamoUrl(rawUrl) {
+      const parsed = this.safeUrl(rawUrl);
+      if (!parsed || parsed.hostname.toLowerCase() !== 'camo.githubusercontent.com') return rawUrl || '';
+      const parts = parsed.pathname.split('/').filter(Boolean);
+      const hex = parts[1];
+      if (!hex || hex.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(hex)) return rawUrl || '';
+      try {
+        const bytes = new Uint8Array(hex.length / 2);
+        for (let i = 0; i < hex.length; i += 2) {
+          bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+        }
+        if (typeof TextDecoder === 'function') {
+          return new TextDecoder('utf-8').decode(bytes);
+        }
+        let pct = '';
+        for (let i = 0; i < bytes.length; i++) {
+          pct += '%' + bytes[i].toString(16).padStart(2, '0');
+        }
+        return decodeURIComponent(pct);
+      } catch {
+        return rawUrl || '';
+      }
+    },
+
+    isBadgeUrl(rawUrl) {
+      if (!rawUrl) return false;
+      const candidates = [rawUrl, this.decodeCamoUrl(rawUrl)];
+      for (const candidate of candidates) {
+        if (!candidate) continue;
+        if (LIGHTBOX_BADGE_URL_RE.test(candidate)) return true;
+        const parsed = this.safeUrl(candidate);
+        if (parsed && LIGHTBOX_BADGE_HOST_RE.test(parsed.hostname)) return true;
+      }
+      return false;
+    },
+
+    resolveImageUrl(img) {
+      if (!img) return '';
+      const raw =
+        img.currentSrc ||
+        (typeof img.getAttribute === 'function' && img.getAttribute('src')) ||
+        img.src ||
+        '';
+      const parsed = this.safeUrl(raw);
+      return parsed ? parsed.href : '';
+    },
+
+    isImageSelfLink(link, img) {
+      if (!link) return false;
+      const rawHref =
+        (typeof link.getAttribute === 'function' && link.getAttribute('href')) ||
+        link.href ||
+        '';
+      const hrefUrl = this.safeUrl(rawHref);
+      if (!hrefUrl || (hrefUrl.protocol !== 'http:' && hrefUrl.protocol !== 'https:')) {
+        return false;
+      }
+
+      const imgSrc = this.resolveImageUrl(img);
+      const imgUrl = this.safeUrl(imgSrc);
+      if (imgUrl && hrefUrl.href === imgUrl.href) return true;
+
+      const host = hrefUrl.hostname.toLowerCase();
+      const currentHost = this.getCurrentHost().toLowerCase();
+      if (host === 'github.com' || host === currentHost) {
+        if (LIGHTBOX_REPO_IMAGE_RE.test(hrefUrl.pathname)) return true;
+        if (/^\/user-attachments\/assets\//i.test(hrefUrl.pathname)) return true;
+        if (/^\/[^/]+\/[^/]+\/assets\/\d+\//i.test(hrefUrl.pathname)) return true;
+      }
+
+      if (LIGHTBOX_GITHUB_MEDIA_HOST_RE.test(host)) return true;
+      if (LIGHTBOX_IMAGE_EXT_RE.test(hrefUrl.pathname)) return true;
+
+      return false;
+    },
+
+    isTinyIcon(img) {
+      if (!img) return true;
+      const attrW = typeof img.getAttribute === 'function' ? parseInt(img.getAttribute('width') || '', 10) : NaN;
+      const attrH = typeof img.getAttribute === 'function' ? parseInt(img.getAttribute('height') || '', 10) : NaN;
+      if (attrW > 0 && attrH > 0 && attrW <= 40 && attrH <= 40) return true;
+
+      if (img.complete && typeof img.naturalHeight === 'number' && img.naturalHeight > 0) {
+        const rect = typeof img.getBoundingClientRect === 'function' ? img.getBoundingClientRect() : null;
+        if (rect && rect.height > 0) {
+          if (rect.height < 48 && img.naturalHeight < 64) return true;
+          if (rect.width > 0 && rect.width < 48 && rect.height < 48) return true;
+        }
+      }
+      return false;
+    },
+
+    isPreviewableImage(img) {
+      if (!img || img.tagName !== 'IMG') return false;
+      if (typeof img.closest !== 'function' || !img.closest('.markdown-body')) return false;
+      if (
+        (img.classList && (img.classList.contains('avatar') || img.classList.contains('emoji'))) ||
+        img.closest('.avatar, g-emoji, svg')
+      ) {
+        return false;
+      }
+
+      const src = this.resolveImageUrl(img);
+      if (!src) return false;
+
+      const link = img.closest('a[href]');
+      if (link && !this.isImageSelfLink(link, img)) {
+        return false;
+      }
+
+      const linkHref = link
+        ? (typeof link.getAttribute === 'function' && link.getAttribute('href')) || link.href || ''
+        : '';
+      if (this.isBadgeUrl(src) || (linkHref && this.isBadgeUrl(linkHref))) {
+        return false;
+      }
+
+      if (this.isTinyIcon(img)) {
+        return false;
+      }
+
+      return true;
+    },
+
+    getImageTitle(img, src) {
+      const alt = ((typeof img.getAttribute === 'function' && img.getAttribute('alt')) || img.alt || '').trim();
+      if (alt) return alt;
+      const parsed = this.safeUrl(src);
+      if (parsed) {
+        const seg = parsed.pathname.split('/').filter(Boolean).pop();
+        if (seg) {
+          try {
+            return decodeURIComponent(seg);
+          } catch {
+            return seg;
+          }
+        }
+      }
+      return '图片预览';
+    },
+
+    collectGallery(clickedImg) {
+      const scope = (typeof clickedImg.closest === 'function' && clickedImg.closest('.markdown-body')) || document;
+      const imgs = typeof scope.querySelectorAll === 'function' ? scope.querySelectorAll('img') : [clickedImg];
+      const items = [];
+      let activeIndex = 0;
+
+      for (let i = 0; i < imgs.length; i++) {
+        const el = imgs[i];
+        if (!this.isPreviewableImage(el)) continue;
+        const src = this.resolveImageUrl(el);
+        const link = typeof el.closest === 'function' ? el.closest('a[href]') : null;
+        const rawHref = link
+          ? (typeof link.getAttribute === 'function' && link.getAttribute('href')) || link.href || ''
+          : '';
+        const linkUrl = this.safeUrl(rawHref);
+        if (el === clickedImg) activeIndex = items.length;
+        items.push({
+          el,
+          src,
+          repoHref: linkUrl ? linkUrl.href : '',
+          title: this.getImageTitle(el, src),
+        });
+      }
+
+      if (!items.length) {
+        const src = this.resolveImageUrl(clickedImg);
+        const link = typeof clickedImg.closest === 'function' ? clickedImg.closest('a[href]') : null;
+        const rawHref = link
+          ? (typeof link.getAttribute === 'function' && link.getAttribute('href')) || link.href || ''
+          : '';
+        const linkUrl = this.safeUrl(rawHref);
+        items.push({
+          el: clickedImg,
+          src,
+          repoHref: linkUrl ? linkUrl.href : '',
+          title: this.getImageTitle(clickedImg, src),
+        });
+      }
+
+      return { items, activeIndex };
+    },
+
+    ensureDOM() {
+      if (this.els && this.els.overlay) return this.els;
+
+      const existing = typeof document.querySelector === 'function' ? document.querySelector('.ghe-lightbox-overlay') : null;
+      if (existing) existing.remove();
+
+      const overlay = document.createElement('div');
+      overlay.className = 'ghe-lightbox-overlay';
+      overlay.hidden = true;
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('aria-label', '图片大图预览');
+
+      const topbar = document.createElement('div');
+      topbar.className = 'ghe-lightbox-topbar';
+
+      const meta = document.createElement('div');
+      meta.className = 'ghe-lightbox-meta';
+      const counter = document.createElement('span');
+      counter.className = 'ghe-lightbox-counter';
+      const title = document.createElement('span');
+      title.className = 'ghe-lightbox-title';
+      meta.appendChild(counter);
+      meta.appendChild(title);
+
+      const actions = document.createElement('div');
+      actions.className = 'ghe-lightbox-actions';
+
+      const makeBtn = (text, cls, titleText) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `ghe-lightbox-btn ${cls || ''}`.trim();
+        btn.textContent = text;
+        if (titleText) btn.setAttribute('title', titleText);
+        return btn;
+      };
+
+      const makeLink = (text, titleText) => {
+        const a = document.createElement('a');
+        a.className = 'ghe-lightbox-btn';
+        a.textContent = text;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        if (titleText) a.setAttribute('title', titleText);
+        return a;
+      };
+
+      const zoomOutBtn = makeBtn('−', '', '缩小');
+      const zoomLabel = document.createElement('span');
+      zoomLabel.className = 'ghe-lightbox-zoom-label';
+      zoomLabel.textContent = '100%';
+      const zoomInBtn = makeBtn('+', '', '放大');
+      const fitBtn = makeBtn('适应', '', '适应窗口');
+      const oneToOneBtn = makeBtn('1:1', '', '原始尺寸 / 2倍');
+
+      const sep = document.createElement('span');
+      sep.className = 'ghe-lightbox-sep';
+
+      const rawLink = makeLink('原图 ↗', '新标签打开图片直链');
+      const repoLink = makeLink('仓库文件 ↗', '新标签打开原仓库链接');
+      const closeBtn = makeBtn('✕', 'ghe-lightbox-close', '关闭 (Esc)');
+
+      actions.appendChild(zoomOutBtn);
+      actions.appendChild(zoomLabel);
+      actions.appendChild(zoomInBtn);
+      actions.appendChild(fitBtn);
+      actions.appendChild(oneToOneBtn);
+      actions.appendChild(sep);
+      actions.appendChild(rawLink);
+      actions.appendChild(repoLink);
+      actions.appendChild(closeBtn);
+
+      topbar.appendChild(meta);
+      topbar.appendChild(actions);
+
+      const stage = document.createElement('div');
+      stage.className = 'ghe-lightbox-stage';
+
+      const prevBtn = makeBtn('‹', 'ghe-lightbox-nav ghe-lightbox-prev', '上一张 (←)');
+      const nextBtn = makeBtn('›', 'ghe-lightbox-nav ghe-lightbox-next', '下一张 (→)');
+      const img = document.createElement('img');
+      img.className = 'ghe-lightbox-img';
+      img.alt = '';
+
+      stage.appendChild(prevBtn);
+      stage.appendChild(img);
+      stage.appendChild(nextBtn);
+
+      const hint = document.createElement('div');
+      hint.className = 'ghe-lightbox-hint';
+      hint.textContent = '滚轮缩放 · 双击切换 1:1 · 左右方向键切图 · Esc 关闭 · 按住 Cmd/Ctrl 点击原图可直接打开原链接';
+
+      overlay.appendChild(topbar);
+      overlay.appendChild(stage);
+      overlay.appendChild(hint);
+
+      const host = document.body || document.documentElement;
+      if (host && typeof host.appendChild === 'function') {
+        host.appendChild(overlay);
+      }
+
+      // 绑定交互事件
+      closeBtn.addEventListener('click', () => this.close());
+      prevBtn.addEventListener('click', (e) => {
+        if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+        this.step(-1);
+      });
+      nextBtn.addEventListener('click', (e) => {
+        if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+        this.step(1);
+      });
+      zoomOutBtn.addEventListener('click', () => this.setZoom(this.state.scale / 1.25));
+      zoomInBtn.addEventListener('click', () => this.setZoom(this.state.scale * 1.25));
+      fitBtn.addEventListener('click', () => this.resetTransform());
+      oneToOneBtn.addEventListener('click', () => this.toggleOneToOne());
+
+      stage.addEventListener('click', (e) => {
+        if (this.state.dragMoved) {
+          this.state.dragMoved = false;
+          return;
+        }
+        if (e && (e.target === stage || e.target === overlay)) {
+          this.close();
+        }
+      });
+
+      img.addEventListener('dblclick', (e) => {
+        if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+        this.toggleOneToOne();
+      });
+
+      overlay.addEventListener(
+        'wheel',
+        (e) => {
+          if (!this.state.isOpen) return;
+          if (typeof e.preventDefault === 'function') e.preventDefault();
+          if (typeof e.stopPropagation === 'function') e.stopPropagation();
+          const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+          this.setZoom(this.state.scale * factor);
+        },
+        { passive: false }
+      );
+
+      img.addEventListener('mousedown', (e) => {
+        if (!e || e.button !== 0 || this.state.scale <= 1) return;
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+        this.state.dragging = true;
+        this.state.dragMoved = false;
+        this.state.startX = e.clientX;
+        this.state.startY = e.clientY;
+        this.state.originTx = this.state.tx;
+        this.state.originTy = this.state.ty;
+        img.setAttribute('data-dragging', 'true');
+      });
+
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        if (typeof window.__gheLightboxMouseCleanup === 'function') {
+          window.__gheLightboxMouseCleanup();
+        }
+        const onMouseMove = (e) => {
+          if (!this.state.dragging) return;
+          const dx = e.clientX - this.state.startX;
+          const dy = e.clientY - this.state.startY;
+          if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+            this.state.dragMoved = true;
+          }
+          this.state.tx = this.state.originTx + dx;
+          this.state.ty = this.state.originTy + dy;
+          this.applyTransform();
+        };
+        const onMouseUp = () => {
+          if (!this.state.dragging) return;
+          this.state.dragging = false;
+          if (this.els && this.els.img) {
+            this.els.img.removeAttribute('data-dragging');
+          }
+        };
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+        window.__gheLightboxMouseCleanup = () => {
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+        };
+      }
+
+      this.els = {
+        overlay,
+        counter,
+        title,
+        zoomLabel,
+        rawLink,
+        repoLink,
+        prevBtn,
+        nextBtn,
+        img,
+      };
+      return this.els;
+    },
+
+    applyTransform() {
+      if (!this.els || !this.els.img) return;
+      const { scale, tx, ty } = this.state;
+      this.els.img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+      if (scale > 1.01) {
+        this.els.img.setAttribute('data-zoomed', 'true');
+      } else {
+        this.els.img.removeAttribute('data-zoomed');
+      }
+      if (this.els.zoomLabel) {
+        this.els.zoomLabel.textContent = `${Math.round(scale * 100)}%`;
+      }
+    },
+
+    resetTransform() {
+      this.state.scale = 1;
+      this.state.tx = 0;
+      this.state.ty = 0;
+      this.state.dragging = false;
+      this.state.dragMoved = false;
+      this.applyTransform();
+    },
+
+    setZoom(nextScale) {
+      const clamped = Math.min(5, Math.max(0.25, nextScale));
+      this.state.scale = clamped;
+      if (clamped <= 1) {
+        this.state.tx = 0;
+        this.state.ty = 0;
+      }
+      this.applyTransform();
+    },
+
+    toggleOneToOne() {
+      if (Math.abs(this.state.scale - 1) > 0.05 || this.state.tx !== 0 || this.state.ty !== 0) {
+        this.resetTransform();
+        return;
+      }
+      let target = 2;
+      const img = this.els && this.els.img;
+      if (img && img.naturalWidth > 0 && img.clientWidth > 0) {
+        const naturalRatio = img.naturalWidth / img.clientWidth;
+        target = naturalRatio > 1.15 ? Math.min(5, naturalRatio) : 2;
+      }
+      this.setZoom(target);
+    },
+
+    goTo(index) {
+      const { items } = this.state;
+      if (!items.length) return;
+      const total = items.length;
+      const nextIdx = ((index % total) + total) % total;
+      this.state.index = nextIdx;
+      const item = items[nextIdx];
+      const els = this.ensureDOM();
+
+      this.resetTransform();
+      els.img.src = item.src;
+      els.img.alt = item.title;
+      els.counter.textContent = `${nextIdx + 1} / ${total}`;
+      els.title.textContent = item.title;
+      els.rawLink.href = item.src;
+
+      if (item.repoHref && item.repoHref !== item.src) {
+        els.repoLink.href = item.repoHref;
+        els.repoLink.hidden = false;
+      } else {
+        els.repoLink.hidden = true;
+      }
+
+      const showNav = total > 1;
+      els.prevBtn.hidden = !showNav;
+      els.nextBtn.hidden = !showNav;
+    },
+
+    step(delta) {
+      if (!this.state.isOpen || this.state.items.length <= 1) return;
+      this.goTo(this.state.index + delta);
+    },
+
+    bindKeyHandler() {
+      if (this.keyHandler || typeof document.addEventListener !== 'function') return;
+      this.keyHandler = (e) => {
+        if (!this.state.isOpen || !e) return;
+        const key = e.key;
+        if (key === 'Escape') {
+          if (typeof e.preventDefault === 'function') e.preventDefault();
+          if (typeof e.stopPropagation === 'function') e.stopPropagation();
+          this.close();
+        } else if (key === 'ArrowLeft') {
+          if (typeof e.preventDefault === 'function') e.preventDefault();
+          if (typeof e.stopPropagation === 'function') e.stopPropagation();
+          this.step(-1);
+        } else if (key === 'ArrowRight') {
+          if (typeof e.preventDefault === 'function') e.preventDefault();
+          if (typeof e.stopPropagation === 'function') e.stopPropagation();
+          this.step(1);
+        }
+      };
+      document.addEventListener('keydown', this.keyHandler, true);
+    },
+
+    unbindKeyHandler() {
+      if (!this.keyHandler) return;
+      if (typeof document.removeEventListener === 'function') {
+        document.removeEventListener('keydown', this.keyHandler, true);
+      }
+      this.keyHandler = null;
+    },
+
+    open(clickedImg) {
+      if (!clickedImg) return;
+      const { items, activeIndex } = this.collectGallery(clickedImg);
+      if (!items.length) return;
+
+      const els = this.ensureDOM();
+      this.state.items = items;
+      this.state.isOpen = true;
+      this.goTo(activeIndex);
+
+      els.overlay.hidden = false;
+      document.documentElement.setAttribute('data-ghe-lightbox-open', 'true');
+      this.bindKeyHandler();
+    },
+
+    close() {
+      if (!this.state.isOpen) return;
+      this.state.isOpen = false;
+      this.state.items = [];
+      this.resetTransform();
+      if (this.els && this.els.overlay) {
+        this.els.overlay.hidden = true;
+      }
+      document.documentElement.removeAttribute('data-ghe-lightbox-open');
+      this.unbindKeyHandler();
+    },
+
+    applyRootFlags() {
+      const enabled = Boolean(config.imageLightbox && config.imageLightbox.enabled);
+      document.documentElement.setAttribute('data-ghe-lightbox-enabled', String(enabled));
+      if (!enabled) {
+        this.close();
+      }
+    },
+
+    scan(root) {
+      if (!root || (root.nodeType !== 1 && root.nodeType !== 9 && root.nodeType !== 11)) return;
+      const enabled = Boolean(config.imageLightbox && config.imageLightbox.enabled);
+
+      if (!enabled) {
+        const marked = document.querySelectorAll('img[data-ghe-lightbox]');
+        for (let i = 0; i < marked.length; i++) {
+          marked[i].removeAttribute('data-ghe-lightbox');
+        }
+        return;
+      }
+
+      let imgs = [];
+      if (root.nodeType === 1 && root.tagName === 'IMG') {
+        imgs = [root];
+      } else if (typeof root.querySelectorAll === 'function') {
+        imgs = root.querySelectorAll('.markdown-body img');
+        if (!imgs.length && root.nodeType === 1 && typeof root.closest === 'function' && root.closest('.markdown-body')) {
+          imgs = root.querySelectorAll('img');
+        }
+      }
+
+      for (let i = 0; i < imgs.length; i++) {
+        const img = imgs[i];
+        if (this.isPreviewableImage(img)) {
+          if (img.getAttribute('data-ghe-lightbox') !== 'true') {
+            img.setAttribute('data-ghe-lightbox', 'true');
+          }
+        } else if (typeof img.hasAttribute === 'function' && img.hasAttribute('data-ghe-lightbox')) {
+          img.removeAttribute('data-ghe-lightbox');
+        }
+      }
+    },
+
+    getMenus() {
+      const opt = config.imageLightbox;
+      return [
+        {
+          label: `${opt.enabled ? '✅' : '⬜'} 功能4：Markdown 图片点击看大图`,
+          onClick: () => {
+            opt.enabled = !opt.enabled;
+            if (!opt.enabled) this.close();
+          },
+        },
+      ];
+    },
+
+    init() {
+      this.applyRootFlags();
+      injectCSS(this.styles());
+
+      const target = typeof window !== 'undefined' ? window : null;
+      if (target && typeof target.__gheLightboxCleanup === 'function') {
+        target.__gheLightboxCleanup();
+      }
+
+      const onDocClick = (e) => {
+        const opt = config.imageLightbox;
+        if (!opt || !opt.enabled || !e) return;
+        if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+
+        const targetEl = e.target;
+        const img =
+          targetEl && targetEl.tagName === 'IMG'
+            ? targetEl
+            : targetEl && typeof targetEl.closest === 'function'
+              ? targetEl.closest('.markdown-body img')
+              : null;
+        if (!img) return;
+        if (typeof img.closest === 'function' && img.closest('.ghe-lightbox-overlay')) return;
+        if (!this.isPreviewableImage(img)) return;
+
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        this.open(img);
+      };
+
+      if (typeof document.addEventListener === 'function') {
+        document.addEventListener('click', onDocClick, true);
+        if (target) {
+          target.__gheLightboxCleanup = () => {
+            if (typeof document.removeEventListener === 'function') {
+              document.removeEventListener('click', onDocClick, true);
+            }
+          };
+        }
+      }
+    },
+  };
+
+  // ============================================================================
+  // 7. 功能注册表与 SPA / 动态 DOM 调度器
   // ============================================================================
   const FEATURES = [
     visibilityBadgeFeature,
     releaseFilterFeature,
     shortcutGuardFeature,
+    imageLightboxFeature,
   ];
 
   // 合并高频 DOM 变更，按帧批量增量扫描
@@ -1732,13 +2596,14 @@
       (node.classList.contains('ghe-header-pill') ||
         node.classList.contains('ghe-platform-filter') ||
         node.classList.contains('ghe-release-filter-notice') ||
-        node.classList.contains('ghe-notes-toggle'))
+        node.classList.contains('ghe-notes-toggle') ||
+        node.classList.contains('ghe-lightbox-overlay'))
     ) {
       return true;
     }
     if (
       typeof node.closest === 'function' &&
-      node.closest('.ghe-platform-filter, .ghe-release-filter-notice, .ghe-notes-toggle')
+      node.closest('.ghe-platform-filter, .ghe-release-filter-notice, .ghe-notes-toggle, .ghe-lightbox-overlay')
     ) {
       return true;
     }
@@ -1823,11 +2688,15 @@
     }
 
     // 兼容 GitHub Turbo / PJAX 局部路由切换与浏览器前进后退
+    const onRouteChange = () => {
+      imageLightboxFeature.close();
+      scheduleScan(document);
+    };
     ['turbo:load', 'turbo:render', 'turbo:frame-load', 'pjax:end'].forEach((evt) => {
-      document.addEventListener(evt, () => scheduleScan(document));
+      document.addEventListener(evt, onRouteChange);
     });
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-      window.addEventListener('popstate', () => scheduleScan(document));
+      window.addEventListener('popstate', onRouteChange);
     }
   }
 
