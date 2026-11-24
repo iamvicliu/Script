@@ -18,7 +18,7 @@
 
 | 工具 | 用途 | 最后更新 | 安装 |
 | --- | --- | --- | --- |
-| GitHub 增强套件 (GitHub Enhancer) | 强化仓库列表与详情页 Private / Public / Internal 可见性区分，支持 Releases 平台筛选与长更新日志折叠、屏蔽易误触单键快捷键（s / w），以及 Markdown 图片点击原地看大图 | 2026-11-24 | [说明](Tampermonkey/GitHub-enhancer/README.md) · [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/GitHub-enhancer/GitHub-enhancer.user.js) |
+| GitHub 增强套件 (GitHub Enhancer) | Markdown 图片点击原地看大图、Releases 按系统筛选安装包并折叠长日志、公开/私有仓库一眼区分、屏蔽易误触单键快捷键（s / w），四项均可单独开关 | 2026-11-24 | [说明](Tampermonkey/GitHub-enhancer/README.md) · [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/GitHub-enhancer/GitHub-enhancer.user.js) |
 | WorkBuddy 国际版登录增强 | 恢复 WorkBuddy 国际版登录页原本已有的 Google、GitHub 和 X 登录入口 | 2026-10-18 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/WorkBuddy-restore-third-party-login/WorkBuddy-restore-third-party-login.user.js) |
 | Offcloud 远程下载切换 | 调整 Offcloud 页面中 Remote 功能的发送对象 | 2022-03-19 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Offcloud-Remote-Switch.js) |
 | Pico 论坛标题整理 | 整理帖子、版块和个人主页的浏览器标题 | 2022-09-27 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Pico.js) |
