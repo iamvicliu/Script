@@ -45,7 +45,7 @@
 
 | 工具 | 用途 | 最后更新 | 安装 |
 | --- | --- | --- | --- |
-| 7881 购买填单助手 | 按页面默认选项勾选购买协议、安全服务和确认提醒；按脚本设置可继续自动下单或支付 | 2026-10-18 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/7881-auto-order-form-helper.user.js) |
+| 7881 购买填单助手 | 按页面默认选项勾选购买协议、安全服务和确认提醒；按脚本设置可继续自动下单或支付 | 2026-11-24 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/7881-auto-order-form-helper.user.js) |
 
 # 服务器运维
 
