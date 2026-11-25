@@ -2,14 +2,14 @@
 
 面向 WeGame《流放之路 2》BD 分享页的浏览器增强脚本。它会从 WeGame 公开 BD 分享网页获取技能信息，并在页面下方整理成更容易查看、复制和筛选的文字表格。
 
-## 功能
-
 ## 安装入口
 
 - 国际用户可从 GreasyFork 或 GitHub 安装。
 - 国内用户如果打不开 GreasyFork / GitHub，可以从 Gitee 镜像安装：
   `https://gitee.com/aprilfool/Script/raw/main/Tampermonkey/POE2-WeGameBD-enhancer/POE2-WeGameBD-enhancer.user.js`
 - 从 Gitee 安装的版本会优先使用 Gitee 地址检查更新，后续更新更适合国内网络环境。
+
+## 功能
 
 ### 技能表格化展示
 

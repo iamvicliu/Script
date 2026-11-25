@@ -22,7 +22,7 @@
 | Discourse 论坛用户注册信息辅助 | 在 linux.do、idcflare.com 等 Discourse 论坛帖子页展示用户名旁注册天数、发帖数、回帖数与信任级别（自动查楼主、楼下按需点查、支持一键批量查看） | 2026-11-24 | [说明](Tampermonkey/Discourse-user-info-helper/README.md) · [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Discourse-user-info-helper/Discourse-user-info-helper.user.js) |
 | 网页隐私打码助手 (IP / 邮箱 / 手机 / 选中打码) | 截图或录屏前自动给网页中的 IP、邮箱、手机号打码，支持点小眼睛查看/还原原文、手动选中任意文字打码、按站点暂停与复制局部脱敏 | 2026-11-24 | [说明](Tampermonkey/Page-privacy-mask/README.md) · [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Page-privacy-mask/Page-privacy-mask.user.js) |
 | AkileCloud Push 市场助手 | 在 AkileCloud Push 交易市场将服务器列表转为可排序的溢价与预算计算表格，并将刷新按钮移至搜索框旁，两项功能均可单独开关 | 2026-11-24 | [说明](Tampermonkey/AkileCloud-pushshop-helper/README.md) · [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/AkileCloud-pushshop-helper/AkileCloud-pushshop-helper.user.js) |
-| WorkBuddy 国际版登录增强 | 恢复 WorkBuddy 国际版登录页原本已有的 Google、GitHub 和 X 登录入口 | 2026-10-18 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/WorkBuddy-restore-third-party-login/WorkBuddy-restore-third-party-login.user.js) |
+| WorkBuddy 国际版登录增强 | 恢复 WorkBuddy 国际版登录页原本已有的 Google、GitHub 和 X 登录入口 | 2026-10-18 | [说明](Tampermonkey/WorkBuddy-restore-third-party-login/README.md) · [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/WorkBuddy-restore-third-party-login/WorkBuddy-restore-third-party-login.user.js) |
 | Offcloud 远程下载切换 | 调整 Offcloud 页面中 Remote 功能的发送对象 | 2022-03-19 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Offcloud-Remote-Switch.js) |
 | Pico 论坛标题整理 | 整理帖子、版块和个人主页的浏览器标题 | 2022-09-27 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/Pico.js) |
 
@@ -31,15 +31,15 @@
 | 工具 | 用途 | 最后更新 | 安装 |
 | --- | --- | --- | --- |
 | PoEDB / POE2DB 多语言助手 | 提供多语言名称显示、三语搜索和复制功能 | 2026-07-26 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/POE2DB-multilingual-helper.user.js) |
-| POE2 NinjaBD 增强 | 把 poe.ninja 公开角色页的装备、药剂、珠宝和技能整理成便于复制的表格，并支持名称语言切换 | 2026-07-07 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/POE2-NinjaBD-enhancer/POE2-NinjaBD-enhancer.user.js) |
-| POE2 WeGameBD 增强 | 把 WeGame BD 分享页的技能信息整理成便于查看、筛选和复制的表格 | 2026-07-07 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/POE2-WeGameBD-enhancer/POE2-WeGameBD-enhancer.user.js) |
+| POE2 NinjaBD 增强 | 把 poe.ninja 公开角色页的装备、药剂、珠宝和技能整理成便于复制的表格，并支持名称语言切换 | 2026-07-07 | [说明](Tampermonkey/POE2-NinjaBD-enhancer/README.md) · [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/POE2-NinjaBD-enhancer/POE2-NinjaBD-enhancer.user.js) |
+| POE2 WeGameBD 增强 | 把 WeGame BD 分享页的技能信息整理成便于查看、筛选和复制的表格 | 2026-07-07 | [说明](Tampermonkey/POE2-WeGameBD-enhancer/README.md) · [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/POE2-WeGameBD-enhancer/POE2-WeGameBD-enhancer.user.js) |
 | POE2 名称词典 | 保存脚本使用的公开名称对照数据 | 2026-07-08 | [查看](Tampermonkey/POE2-data/poe2-name-dict-v1.json) |
 
 ### 《暗黑破坏神 4》辅助
 
 | 工具 | 用途 | 最后更新 | 安装 |
 | --- | --- | --- | --- |
-| 暗黑核 D2Core BD 增强 | 为暗黑核 BD 页面增加全屏浏览、模块切换和变体切换 | 2026-09-29 | [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/D4-D2Core-fullscreen-enhancer/D4-D2Core-fullscreen-enhancer.user.js) |
+| 暗黑核 D2Core BD 增强 | 为暗黑核 BD 页面增加全屏浏览、模块切换和变体切换 | 2026-09-29 | [说明](Tampermonkey/D4-D2Core-fullscreen-enhancer/README.md) · [安装](https://raw.githubusercontent.com/iamvicliu/Script/main/Tampermonkey/D4-D2Core-fullscreen-enhancer/D4-D2Core-fullscreen-enhancer.user.js) |
 
 ### 7881填单辅助
 

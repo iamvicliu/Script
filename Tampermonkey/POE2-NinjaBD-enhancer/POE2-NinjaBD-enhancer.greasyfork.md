@@ -2,14 +2,14 @@
 
 面向 poe.ninja《流放之路 2》BD 角色页的浏览器增强脚本。核心用途是更方便地抄作业：把公开角色页里的装备、药剂、珠宝和技能整理成文字表格，并支持英文、简体、繁体名称切换，方便对照国际服与国服的装备和技能名称。
 
-## 功能
-
 ## 安装入口
 
 - 国际用户可从 GreasyFork 或 GitHub 安装。
 - 国内用户如果打不开 GreasyFork / GitHub，可以从 Gitee 镜像安装：
   `https://gitee.com/aprilfool/Script/raw/main/Tampermonkey/POE2-NinjaBD-enhancer/POE2-NinjaBD-enhancer.user.js`
 - 从 Gitee 安装的版本会优先使用 Gitee 地址检查更新，后续更新更适合国内网络环境。
+
+## 功能
 
 ### BD 信息表格化展示
 
